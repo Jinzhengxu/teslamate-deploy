@@ -47,6 +47,24 @@ bash deploy/deploy.sh --rollback                  # 下线并移除 Caddy 站点
 docker logs -f teslamate                          # 看日志
 ```
 
+## 分时电价（可选）
+
+TeslaMate 的地理围栏只能填一个固定电价。家里是峰谷电价的话，用 [TeslaMateAgile](https://github.com/AmyJeanes/TeslaMateAgile) 按时段算：它每 5 分钟检查一次新完成的充电，按每个时段实际充进去的电量分别计价，把费用写回 TeslaMate，所有页面和 Grafana 面板都能直接看到。
+
+1. 在 TeslaMate → Geo-Fences 新建“家”的围栏，**电价那栏留空**（填了的话 TeslaMate 会先按固定价写入费用，分时电价就轮不到了）。
+2. 在服务器上运行（时段必须刚好覆盖 24 小时，跨午夜可以写成 `23:00-07:00`，午夜写 `00:00`）：
+
+```bash
+TM_TOU_PRICES='23:00-07:00=0.3,07:00-23:00=0.6' bash deploy/deploy.sh --tou
+```
+
+- 只有一个围栏时自动选中；有多个时脚本会列出来，用 `TM_TOU_GEOFENCE=ID` 指定。
+- 设置时围栏里已有、但还没算钱的历史充电会被自动补算。
+- 改电价只影响之后的充电。要按新电价重算历史：`TM_TOU_RECALC=1 bash deploy/deploy.sh --tou`（会先自动备份数据库）。
+- 夏季/非夏季电价不同时，换季时重新运行一次，填新的时段即可；已算好的历史费用不受影响。
+- 阶梯电价没法按次计算（取决于当月累计用量），建议填你平时所在那一档的单价。
+- 关闭：`TM_TOU_PRICES=off bash deploy/deploy.sh --tou`
+
 ## 可覆盖的环境变量
 
 | 变量 | 默认值 | 说明 |
@@ -56,6 +74,7 @@ docker logs -f teslamate                          # 看日志
 | `CADDY_CONTAINER` | `matrix-chat-caddy-1` | Caddy 容器名，找不到时自动搜名字含 caddy 的容器 |
 | `CADDY_NETWORK` | 自动探测 | Caddy 所在的 docker 网络 |
 | `CADDYFILE_HOST` | `/root/matrix-chat/Caddyfile` | 宿主上的 Caddyfile 路径 |
+| `TM_TOU_GEOFENCE` | 自动 | 分时电价作用的地理围栏（名字或 ID） |
 | `FORCE` | `0` | 设为 `1` 时内存不足也继续部署 |
 
 ## 注意

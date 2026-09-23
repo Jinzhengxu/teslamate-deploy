@@ -16,12 +16,19 @@
 #   bash deploy/deploy.sh --backup                 备份数据库到 backups/
 #   bash deploy/deploy.sh --rollback               下线容器并从 Caddyfile 移除站点块（数据卷保留）
 #
+# 分时电价（可选，TeslaMateAgile 按时段给家里的充电算钱）：
+#   TM_TOU_PRICES='23:00-07:00=0.3,07:00-23:00=0.6' bash deploy/deploy.sh --tou
+#                                                  设置 / 修改电价（时段必须刚好覆盖 24 小时）
+#   TM_TOU_RECALC=1 bash deploy/deploy.sh --tou    按当前电价重算该围栏里所有历史充电（先自动备份）
+#   TM_TOU_PRICES=off bash deploy/deploy.sh --tou  关闭分时电价
+#
 # 可覆盖的环境变量：
 #   TM_DOMAIN         站点域名（必填，首次给一次即可；仓库里不写死任何人的域名）
 #   TM_WEB_USER       网页登录用户名（默认 teslamate）
 #   CADDY_CONTAINER   Caddy 容器名（默认 matrix-chat-caddy-1）
 #   CADDY_NETWORK     Caddy 所在 docker 网络名（默认自动探测）
 #   CADDYFILE_HOST    宿主上的 Caddyfile 路径（默认 /root/matrix-chat/Caddyfile）
+#   TM_TOU_GEOFENCE   分时电价作用的地理围栏（名字或 ID；只有一个围栏时自动选中）
 #   FORCE=1           内存不足时也强行部署
 #
 set -euo pipefail
@@ -33,6 +40,8 @@ ENV_FILE="$PROJECT_DIR/.env"
 # 调用方显式给的值优先于 .env 里的
 _override_domain="${TM_DOMAIN:-}"
 _override_password="${TM_WEB_PASSWORD:-}"
+_override_tou="${TM_TOU_PRICES:-}"
+_override_tou_gf="${TM_TOU_GEOFENCE:-}"
 if [[ -f "$ENV_FILE" ]]; then
   set -a
   # shellcheck source=/dev/null
@@ -41,7 +50,9 @@ if [[ -f "$ENV_FILE" ]]; then
 fi
 [[ -n "$_override_domain" ]] && TM_DOMAIN="$_override_domain"
 TM_WEB_PASSWORD="$_override_password"
-unset _override_domain _override_password
+[[ -n "$_override_tou" ]] && TM_TOU_PRICES="$_override_tou"
+[[ -n "$_override_tou_gf" ]] && TM_TOU_GEOFENCE="$_override_tou_gf"
+unset _override_domain _override_password _override_tou _override_tou_gf
 
 # ------------------------------------------------------------------ 参数与常量
 DOMAIN="${TM_DOMAIN:-}"
@@ -50,6 +61,10 @@ CADDY_CONTAINER="${CADDY_CONTAINER:-matrix-chat-caddy-1}"
 CADDYFILE_HOST="${CADDYFILE_HOST:-/root/matrix-chat/Caddyfile}"
 CADDY_NETWORK="${CADDY_NETWORK:-}"
 UPSTREAM_TIMEOUT=180
+# 去掉空格，顺手把中文逗号也认了
+TOU_PRICES="$(printf '%s' "${TM_TOU_PRICES:-}" | tr -d ' ' | sed 's/，/,/g')"
+TOU_GEOFENCE="${TM_TOU_GEOFENCE:-}"
+TOU_ENV_FILE="$PROJECT_DIR/.tou.env"
 
 BEGIN_MARK='# >>> teslamate BEGIN'
 END_MARK='# <<< teslamate END'
@@ -101,6 +116,12 @@ env_set() {
   else
     printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
   fi
+}
+
+env_unset() {
+  [[ -f "$ENV_FILE" ]] || return 0
+  grep -v "^${1}=" "$ENV_FILE" > "$WORK_DIR/env.new" || true
+  cat "$WORK_DIR/env.new" > "$ENV_FILE"
 }
 
 rand_hex() {
@@ -308,11 +329,17 @@ prepare_env() {
   fi
   env_set TM_WEB_USER "$WEB_USER"
   chmod 600 "$ENV_FILE"
+  [[ -f "$TOU_ENV_FILE" ]] || : > "$TOU_ENV_FILE"
 }
 
 start_stack() {
   step "拉取镜像并启动（不映射任何宿主端口）"
   mkdir -p "$PROJECT_DIR/import"
+  # 只有 .tou.env 里已经有围栏 ID 才带上 tou profile：没有围栏 ID 的 TeslaMateAgile
+  # 会去给"不在任何围栏里"的充电（公共桩）按家里电价算钱，那是错的
+  if [[ -n "$TOU_PRICES" && "$TOU_PRICES" != "off" ]] && grep -q '^TeslaMate__GeofenceId=[0-9]' "$TOU_ENV_FILE" 2>/dev/null; then
+    export COMPOSE_PROFILES=tou
+  fi
   dc pull || die "镜像拉取失败"
   dc up -d --remove-orphans || die "docker compose up 失败"
   ok "容器已启动"
@@ -362,6 +389,114 @@ final_check() {
   esac
 }
 
+# ------------------------------------------------------------------ 分时电价
+db_query() { docker exec teslamate-db psql -U teslamate -d teslamate -tA -F '|' -c "$1"; }
+
+# 校验 "23:00-07:00=0.3,07:00-23:00=0.6"：格式对，且一天里每一分钟恰好属于一个时段。
+# 不用 {n} 这种区间正则：Debian 默认的 mawk 老版本不认。
+tou_validate() {
+  printf '%s\n' "$1" | tr ',' '\n' | awk -F'[-=]' '
+    function mins(t,  a) { split(t, a, ":"); return a[1] * 60 + a[2] }
+    $0 == "" { next }
+    {
+      if ($0 !~ /^[0-9][0-9]:[0-5][0-9]-[0-9][0-9]:[0-5][0-9]=[0-9]+(\.[0-9]+)?$/ || substr($1, 1, 2) + 0 > 23 || substr($2, 1, 2) + 0 > 23) {
+        printf "格式不对：%s（应为 HH:MM-HH:MM=每度电价，午夜写 00:00）\n", $0; bad = 1; next
+      }
+      s = mins($1); e = mins($2)
+      if (s == e) { printf "起止时间相同：%s\n", $0; bad = 1; next }
+      for (m = s; m != e; m = (m + 1) % 1440) cover[m]++
+      n++
+    }
+    END {
+      if (bad) exit 1
+      if (n == 0) { print "一个时段都没有"; exit 1 }
+      for (m = 0; m < 1440; m++) {
+        if (cover[m] != 1) {
+          printf "%02d:%02d %s\n", int(m / 60), m % 60, (cover[m] ? "被多个时段重复覆盖" : "不在任何时段里"); exit 1
+        }
+      }
+    }'
+}
+
+configure_tou() {
+  if [[ "$TOU_PRICES" == "off" ]]; then
+    step "关闭分时电价"
+    docker rm -f teslamate-agile >/dev/null 2>&1 || true
+    : > "$TOU_ENV_FILE"
+    env_unset TM_TOU_PRICES
+    env_unset TM_TOU_GEOFENCE
+    ok "已停用 TeslaMateAgile，已算好的历史费用保留不动"
+    return 0
+  fi
+  [[ -n "$TOU_PRICES" ]] || return 0
+
+  step "配置分时电价（TeslaMateAgile）"
+  docker inspect teslamate-db >/dev/null 2>&1 || die "teslamate-db 没在运行，先完整部署一次：bash deploy/deploy.sh"
+
+  local err
+  err="$(tou_validate "$TOU_PRICES")" || die "电价配置有误：$err
+  示例（谷 23-7 点 0.3 元，其余 0.6 元）：TM_TOU_PRICES='23:00-07:00=0.3,07:00-23:00=0.6'"
+  ok "电价时段校验通过，刚好覆盖 24 小时："
+  printf '%s\n' "$TOU_PRICES" | tr ',' '\n' | sed 's/=/  →  /; s/$/ 元\/度/; s/^/      /'
+
+  # ---- 选地理围栏
+  local rows gf_id gf_name gf_cost
+  rows="$(db_query "select id, name, coalesce(cost_per_unit::text, '') from geofences order by id")"
+  if [[ -z "$rows" ]]; then
+    die "TeslaMate 里还没有地理围栏。先到 TeslaMate → Geo-Fences 新建一个“家”（电价那栏留空），再重跑"
+  fi
+  if [[ -n "$TOU_GEOFENCE" ]]; then
+    local line
+    line="$(printf '%s\n' "$rows" | awk -F'|' -v g="$TOU_GEOFENCE" '$1 == g || $2 == g' | head -n 1)"
+    [[ -n "$line" ]] || die "找不到地理围栏「$TOU_GEOFENCE」。现有的围栏（ID|名字|固定电价）：
+$(printf '%s\n' "$rows" | sed 's/^/      /')"
+    IFS='|' read -r gf_id gf_name gf_cost <<< "$line"
+  elif [[ "$(printf '%s\n' "$rows" | wc -l)" -eq 1 ]]; then
+    IFS='|' read -r gf_id gf_name gf_cost <<< "$rows"
+  else
+    die "有多个地理围栏，请指定用哪个（写 ID 最省事）：TM_TOU_GEOFENCE=ID
+      ID|名字|固定电价
+$(printf '%s\n' "$rows" | sed 's/^/      /')"
+  fi
+  ok "作用于地理围栏：ID $gf_id「$gf_name」"
+
+  if [[ -n "$gf_cost" ]]; then
+    warn "这个围栏在 TeslaMate 里填了固定电价 $gf_cost：TeslaMate 会在充电结束时先按它写入费用，"
+    warn "TeslaMateAgile 只处理费用为空的记录，于是分时电价永远轮不到。"
+    warn "请到 TeslaMate → Geo-Fences 编辑「$gf_name」，把电价清空保存，然后重算：TM_TOU_RECALC=1 bash deploy/deploy.sh --tou"
+  fi
+
+  env_set TM_TOU_PRICES "$TOU_PRICES"
+  env_set TM_TOU_GEOFENCE "$gf_id"
+  {
+    printf '# 由 deploy/deploy.sh 生成，别手改。改电价：TM_TOU_PRICES=... bash deploy/deploy.sh --tou\n'
+    printf 'TeslaMate__GeofenceId=%s\n' "$gf_id"
+    printf '%s\n' "$TOU_PRICES" | tr ',' '\n' | awk 'NF { printf "FixedPrice__Prices__%d=%s\n", i++, $0 }'
+  } > "$TOU_ENV_FILE"
+  chmod 600 "$TOU_ENV_FILE"
+
+  if [[ "${TM_TOU_RECALC:-0}" == "1" ]]; then
+    do_backup
+    local n
+    n="$(db_query "with u as (update charging_processes set cost = null where geofence_id = $gf_id returning 1) select count(*) from u")"
+    ok "已清空该围栏内 $n 次充电的费用，TeslaMateAgile 会按当前电价重算"
+  fi
+
+  export COMPOSE_PROFILES=tou
+  dc pull teslamate-agile >/dev/null 2>&1 || warn "teslamate-agile 镜像拉取失败，尝试用本地已有镜像"
+  dc up -d teslamate-agile || die "teslamate-agile 启动失败"
+
+  # 启动后给它几秒连库、读配置；配置错了它会直接退出
+  sleep 8
+  if [[ "$(docker inspect -f '{{.State.Running}}' teslamate-agile 2>/dev/null)" == "true" ]]; then
+    ok "TeslaMateAgile 运行中，每 5 分钟检查一次新完成的充电"
+    dim "每次算费过程可看：docker logs -f teslamate-agile"
+  else
+    docker logs --tail 30 teslamate-agile 2>&1 | sed 's/^/      /'
+    die "TeslaMateAgile 没能保持运行（上面是它的日志）"
+  fi
+}
+
 print_next_steps() {
   cat <<EOF
 
@@ -397,6 +532,7 @@ ${C_BOLD}3) 连上你的车${C_RESET}
 ${C_BOLD}常用命令${C_RESET}
    升级            bash deploy/deploy.sh
    备份数据库      bash deploy/deploy.sh --backup
+   分时电价        TM_TOU_PRICES='23:00-07:00=0.3,07:00-23:00=0.6' bash deploy/deploy.sh --tou
    看日志          docker logs -f teslamate
    下线            bash deploy/deploy.sh --rollback   ${C_DIM}（数据卷保留）${C_RESET}
 
@@ -432,7 +568,16 @@ do_deploy() {
   start_stack
   update_caddyfile add
   final_check
+  configure_tou
   print_next_steps
+}
+
+do_tou() {
+  [[ -n "$TOU_PRICES" ]] || die "请给出各时段电价，例如：
+    TM_TOU_PRICES='23:00-07:00=0.3,07:00-23:00=0.6' bash deploy/deploy.sh --tou
+  关闭：TM_TOU_PRICES=off bash deploy/deploy.sh --tou"
+  [[ -f "$ENV_FILE" ]] || die "找不到 $ENV_FILE，先完整部署一次：TM_DOMAIN=... bash deploy/deploy.sh"
+  configure_tou
 }
 
 do_rollback() {
@@ -440,7 +585,10 @@ do_rollback() {
   detect_caddy
   update_caddyfile remove
   step "停止并移除容器（不加 -v，数据卷保留）"
-  dc down --remove-orphans || warn "docker compose down 失败，可手工 docker rm -f teslamate teslamate-db teslamate-grafana teslamate-mqtt"
+  # 带上 tou profile，compose 才认得 teslamate-agile，否则它会被落下
+  export COMPOSE_PROFILES=tou
+  [[ -f "$TOU_ENV_FILE" ]] || : > "$TOU_ENV_FILE"
+  dc down --remove-orphans || warn "docker compose down 失败，可手工 docker rm -f teslamate teslamate-db teslamate-grafana teslamate-mqtt teslamate-agile"
   cat <<EOF
 
 ${C_BOLD}${C_GREEN}回滚完成。${C_RESET}
@@ -456,6 +604,7 @@ case "${1:-}" in
   "")            do_deploy ;;
   --backup|-b)   do_backup ;;
   --rollback|-r) do_rollback ;;
-  --help|-h)     sed -n '2,25p' "$0" ;;
-  *)             die "未知参数：$1（可用：--backup / --rollback / --help）" ;;
+  --tou)         do_tou ;;
+  --help|-h)     awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0" ;;
+  *)             die "未知参数：$1（可用：--tou / --backup / --rollback / --help）" ;;
 esac

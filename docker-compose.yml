@@ -94,6 +94,34 @@ services:
       - caddy
     logging: *logging
 
+  # 分时电价：按时段电价给某个地理围栏（通常是家）里的充电算钱，写回 charging_processes.cost，
+  # TeslaMate 页面和所有 Grafana 面板直接就能看到。只处理 cost 为空的充电记录。
+  # 属于 tou profile：只有配了 TM_TOU_PRICES，deploy.sh 才会启动它。
+  # 围栏 ID 和各时段电价由 deploy.sh 生成到 .tou.env（条数不固定，没法写成固定的几行变量）。
+  teslamate-agile:
+    image: ghcr.io/amyjeanes/teslamateagile:latest
+    container_name: teslamate-agile
+    restart: unless-stopped
+    profiles:
+      - tou
+    depends_on:
+      - teslamate-db
+    env_file:
+      - .tou.env
+    environment:
+      - DATABASE_HOST=teslamate-db
+      - DATABASE_NAME=teslamate
+      - DATABASE_USER=teslamate
+      - DATABASE_PASS=${TM_DB_PASS:?未设置 TM_DB_PASS}
+      - TeslaMate__EnergyProvider=FixedPrice
+      - TeslaMate__UpdateIntervalSeconds=300
+      - FixedPrice__TimeZone=${TM_TZ:-Asia/Shanghai}
+      - Logging__Console__FormatterName=simple
+      - "Logging__Console__FormatterOptions__TimestampFormat=yyyy-MM-dd HH:mm:ss "
+    # .NET 会按容器上限自动收紧 GC，小机上给个硬上限防止它越长越大
+    mem_limit: 160m
+    logging: *logging
+
   # 不对外开放。以后接 Home Assistant 之类要用 MQTT 时，再加 ports: ["127.0.0.1:1883:1883"]
   teslamate-mqtt:
     image: eclipse-mosquitto:2
