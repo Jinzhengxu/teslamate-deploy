@@ -11,7 +11,7 @@
 
 - 服务器上有一个正在运行的 Caddy 容器，Caddyfile 以文件方式挂进去（默认按 `matrix-chat-caddy-1` + `/root/matrix-chat/Caddyfile`，不同可用环境变量覆盖，见下）
 - Docker 和 Docker Compose v2
-- 约 500MB 空闲内存。小内存机器请先加 swap，脚本检测到内存不足会停下并给出命令
+- 可用内存 + 空闲 swap 合计至少 800MB（TeslaMate 全家约占 500MB）。不够时脚本会停下，并给出不会覆盖已有 swap 的加 swap 命令
 
 ## 部署
 

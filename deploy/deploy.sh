@@ -215,21 +215,27 @@ check_prereq() {
   [[ -f "$SITE_SNIPPET" ]] || die "找不到站点片段 $SITE_SNIPPET"
   ok "root / docker / compose / 项目文件 均就绪"
 
-  # TeslaMate + Postgres + Grafana 常驻约 500MB。小机上硬塞，OOM killer 可能先杀掉 matrix。
-  # 已经在跑的话不再拦：那部分内存早就算在已用里了。
-  local mem_avail swap_total
+  # TeslaMate + Postgres + Grafana 常驻约 500MB。内存 + 空闲 swap 合计不够时硬塞，
+  # OOM killer 可能先杀掉 matrix。已经在跑的话不再拦：那部分内存早就算在已用里了。
+  # 注意 1G 的 swapfile 在 /proc/meminfo 里显示为 1023MB，门槛别卡在 1024 上。
+  local mem_avail swap_free
   mem_avail="$(awk '/MemAvailable/{printf "%d", $2/1024}' /proc/meminfo)"
-  swap_total="$(awk '/SwapTotal/{printf "%d", $2/1024}' /proc/meminfo)"
-  info "可用内存 ${mem_avail}MB，swap ${swap_total}MB"
+  swap_free="$(awk '/SwapFree/{printf "%d", $2/1024}' /proc/meminfo)"
+  info "可用内存 ${mem_avail}MB，空闲 swap ${swap_free}MB"
   if docker inspect teslamate >/dev/null 2>&1; then
     dim "TeslaMate 已在运行，跳过内存门槛"
-  elif [[ "$mem_avail" -lt 700 && "$swap_total" -lt 1024 ]]; then
-    warn "内存偏紧：TeslaMate 全家大约要 500MB，而且没有足够的 swap 兜底。"
-    warn "建议先加 2G swap（一次性，重启后仍有效）："
-    dim "fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile"
-    dim "echo '/swapfile none swap sw 0 0' >> /etc/fstab"
+  elif (( mem_avail + swap_free < 800 )); then
+    # 已有的 /swapfile 多半正在用，建议里绝不能复用它的名字
+    local f=/swapfile n=2
+    while [[ -e "$f" ]]; do f="/swapfile$n"; n=$((n + 1)); done
+    warn "内存 + 空闲 swap 合计只有 $((mem_avail + swap_free))MB，TeslaMate 全家约 500MB，余量不够。"
+    warn "建议再加 1G swap（新建 $f，不动已有的 swap）："
+    dim "fallocate -l 1G $f && chmod 600 $f && mkswap $f && swapon $f"
+    dim "echo '$f none swap sw 0 0' >> /etc/fstab"
     [[ "${FORCE:-0}" == "1" ]] || die "为保护已有服务先停在这里。加好 swap 后重跑；确认要硬上就用 FORCE=1 bash deploy/deploy.sh"
     warn "FORCE=1，继续部署"
+  elif (( mem_avail < 700 )); then
+    warn "物理内存偏紧，会用到一部分 swap（TeslaMate 平时很闲，影响不大）"
   fi
 }
 
