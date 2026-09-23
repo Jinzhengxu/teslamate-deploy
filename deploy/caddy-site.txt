@@ -1,0 +1,28 @@
+# >>> teslamate BEGIN
+# TeslaMate —— 本段由 deploy/deploy.sh 按上下两行标记【整块】幂等替换，
+# 请不要在 BEGIN / END 之间放别的站点配置，否则重新部署时会被覆盖掉。
+# 下面用双下划线包起来的大写单词都是占位符（域名、认证指令名、用户名、密码哈希），写入时替换。
+__DOMAIN__ {
+	encode zstd gzip
+
+	# Grafana 自带登录。它开了 SERVE_FROM_SUB_PATH，要收到带 /grafana 前缀的原始路径，
+	# 所以这里用 handle 而不是 handle_path。
+	@grafana path /grafana /grafana/*
+	handle @grafana {
+		reverse_proxy teslamate-grafana:3000
+	}
+
+	# TeslaMate 本身没有任何登录：谁打开都能看到车的实时位置、改设置，
+	# 所以这一层密码是必须的，不是可选项。
+	handle {
+		__BASIC_AUTH__ {
+			__AUTH_USER__ __AUTH_HASH__
+		}
+		reverse_proxy teslamate:4000
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+	}
+}
+# <<< teslamate END

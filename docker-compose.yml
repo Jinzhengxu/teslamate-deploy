@@ -1,0 +1,118 @@
+# TeslaMate —— 生产编排
+#
+# 关键约定（和 poker 一样）：
+#   1. 本服务【不映射任何宿主端口】。宿主的 80/443 属于已经在跑的
+#      matrix-chat-caddy-1，抢占会直接把已有的 matrix / poker 服务搞挂。
+#      外部流量的路径是：Cloudflare -> 宿主 443 -> 已有 Caddy 容器
+#      -> 同一 docker 网络内直连 teslamate:4000 / teslamate-grafana:3000。
+#   2. 只有 teslamate 和 teslamate-grafana 接入 Caddy 的外部网络；
+#      数据库和 MQTT 只待在本项目自己的 default 网络里，别的项目碰不到。
+#   3. 服务名全部带 teslamate 前缀：接入共享网络后，名字就是 Caddy 那边的
+#      DNS 名，叫 database / grafana 这种通用名迟早和 matrix 那套撞车。
+#
+# 所有变量由 deploy/deploy.sh 生成到同目录的 .env。启动：bash deploy/deploy.sh
+
+# 固定项目名：数据卷名因此固定为 teslamate_teslamate-db 等，不随目录名变化
+name: teslamate
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  teslamate:
+    image: teslamate/teslamate:latest
+    container_name: teslamate
+    restart: unless-stopped
+    depends_on:
+      - teslamate-db
+      - teslamate-mqtt
+    environment:
+      - ENCRYPTION_KEY=${TM_ENCRYPTION_KEY:?未设置 TM_ENCRYPTION_KEY，请先执行 deploy/deploy.sh}
+      - DATABASE_USER=teslamate
+      - DATABASE_PASS=${TM_DB_PASS:?未设置 TM_DB_PASS}
+      - DATABASE_NAME=teslamate
+      - DATABASE_HOST=teslamate-db
+      - MQTT_HOST=teslamate-mqtt
+      # CHECK_ORIGIN 会拿浏览器的 Origin 和 VIRTUAL_HOST 比对，域名写错页面会连不上 websocket
+      - VIRTUAL_HOST=${TM_DOMAIN:?未设置 TM_DOMAIN}
+      - CHECK_ORIGIN=true
+      - TZ=${TM_TZ:-Asia/Shanghai}
+    volumes:
+      - ./import:/opt/app/import
+    # 注意：这里【故意没有 ports:】，入口只有 Caddy
+    expose:
+      - "4000"
+    networks:
+      - default
+      - caddy
+    cap_drop:
+      - ALL
+    logging: *logging
+
+  teslamate-db:
+    image: postgres:18-trixie
+    container_name: teslamate-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=teslamate
+      - POSTGRES_PASSWORD=${TM_DB_PASS:?未设置 TM_DB_PASS}
+      - POSTGRES_DB=teslamate
+    volumes:
+      # Postgres 18 起数据目录挂 /var/lib/postgresql（不再是 .../data）
+      - teslamate-db:/var/lib/postgresql
+    logging: *logging
+
+  teslamate-grafana:
+    image: teslamate/grafana:latest
+    container_name: teslamate-grafana
+    restart: unless-stopped
+    depends_on:
+      - teslamate-db
+    environment:
+      - DATABASE_USER=teslamate
+      - DATABASE_PASS=${TM_DB_PASS:?未设置 TM_DB_PASS}
+      - DATABASE_NAME=teslamate
+      - DATABASE_HOST=teslamate-db
+      # 管理员密码只在 Grafana 第一次初始化时生效，之后改 .env 没用，要去 Grafana 里改
+      - GRAFANA_PASSWD=${TM_GRAFANA_PW:?未设置 TM_GRAFANA_PW}
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${TM_GRAFANA_PW:?未设置 TM_GRAFANA_PW}
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      # 挂在同域名的 /grafana 子路径下，Caddy 那边用 handle（不剥前缀）转发
+      - GF_SERVER_DOMAIN=${TM_DOMAIN:?未设置 TM_DOMAIN}
+      - GF_SERVER_ROOT_URL=https://%(domain)s/grafana
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+    volumes:
+      - teslamate-grafana-data:/var/lib/grafana
+    expose:
+      - "3000"
+    networks:
+      - default
+      - caddy
+    logging: *logging
+
+  # 不对外开放。以后接 Home Assistant 之类要用 MQTT 时，再加 ports: ["127.0.0.1:1883:1883"]
+  teslamate-mqtt:
+    image: eclipse-mosquitto:2
+    container_name: teslamate-mqtt
+    restart: unless-stopped
+    command: mosquitto -c /mosquitto-no-auth.conf
+    volumes:
+      - mosquitto-conf:/mosquitto/config
+      - mosquitto-data:/mosquitto/data
+    logging: *logging
+
+networks:
+  caddy:
+    # 由 matrix-chat 那套 compose 创建，我们只接入，绝不创建也绝不删除它
+    external: true
+    name: ${CADDY_NETWORK:?未设置 CADDY_NETWORK，请先执行 deploy/deploy.sh}
+
+volumes:
+  teslamate-db:
+  teslamate-grafana-data:
+  mosquitto-conf:
+  mosquitto-data:

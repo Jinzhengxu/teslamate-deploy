@@ -1,0 +1,5 @@
+# 服务器上由 deploy.sh 生成，含密钥，绝不能进仓库
+.env
+backups/
+import/
+*.log
