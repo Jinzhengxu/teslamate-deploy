@@ -49,21 +49,28 @@ docker logs -f teslamate                          # 看日志
 
 ## 分时电价（可选）
 
-TeslaMate 的地理围栏只能填一个固定电价。家里是峰谷电价的话，用 [TeslaMateAgile](https://github.com/AmyJeanes/TeslaMateAgile) 按时段算：它每 5 分钟检查一次新完成的充电，按每个时段实际充进去的电量分别计价，把费用写回 TeslaMate，所有页面和 Grafana 面板都能直接看到。
+TeslaMate 的地理围栏只能填一个固定电价。家里是分时电价（尤其是像山东这样按月份换时段的）时，用这里的分时计费：每 5 分钟检查一次该围栏里刚结束、还没算钱的充电，把每段电量按它所在的**本地月份和时刻**查电价，费用写回 TeslaMate，所有页面和 Grafana 面板都能直接看到。它只读写本地数据库，不和特斯拉通信，不影响车休眠。
 
 1. 在 TeslaMate → Geo-Fences 新建“家”的围栏，**电价那栏留空**（填了的话 TeslaMate 会先按固定价写入费用，分时电价就轮不到了）。
-2. 在服务器上运行（时段必须刚好覆盖 24 小时，跨午夜可以写成 `23:00-07:00`，午夜写 `00:00`）：
+2. 在服务器上运行，二选一：
 
 ```bash
+# 按月份变化的电价：用配置文件。仓库自带山东（含济南）居民充电桩 2026-10-01 起的时段
+TM_TOU_FILE=deploy/tou/shandong-ev.conf bash deploy/deploy.sh --tou
+
+# 全年同一套时段：直接写在命令行
 TM_TOU_PRICES='23:00-07:00=0.3,07:00-23:00=0.6' bash deploy/deploy.sh --tou
 ```
 
+配置文件格式见 [deploy/tou/shandong-ev.conf](deploy/tou/shandong-ev.conf)：`[1-2,12]` 开一组月份，下面每行一个 `HH:MM-HH:MM=电价`。12 个月都要有，每组必须刚好覆盖 24 小时（跨午夜写 `23:00-07:00`，午夜写 `00:00`），写错了脚本会指出是哪个月哪一分钟漏了或重复了。
+
 - 只有一个围栏时自动选中；有多个时脚本会列出来，用 `TM_TOU_GEOFENCE=ID` 指定。
-- 设置时围栏里已有、但还没算钱的历史充电会被自动补算。
-- 改电价只影响之后的充电。要按新电价重算历史：`TM_TOU_RECALC=1 bash deploy/deploy.sh --tou`（会先自动备份数据库）。
-- 夏季/非夏季电价不同时，换季时重新运行一次，填新的时段即可；已算好的历史费用不受影响。
-- 阶梯电价没法按次计算（取决于当月累计用量），建议填你平时所在那一档的单价。
+- 设置时围栏里已有、还没算钱的历史充电会马上补算，并显示结果。
+- 跨季节、跨午夜的充电按每段各自所在的月份和时刻分别计价。
+- 电价或时段变了（国网山东每年 11 月公布下一年的时段）：改配置文件后重新运行 `--tou`。只影响之后的充电；要按新规则重算历史：`TM_TOU_RECALC=1 bash deploy/deploy.sh --tou`（会先自动备份数据库）。
+- 阶梯电价没法按次计算（取决于当月累计用量），填你平时所在那一档的单价。
 - 关闭：`TM_TOU_PRICES=off bash deploy/deploy.sh --tou`
+- 计算记录：`docker logs -f teslamate-tou`
 
 ## 可覆盖的环境变量
 
@@ -74,6 +81,7 @@ TM_TOU_PRICES='23:00-07:00=0.3,07:00-23:00=0.6' bash deploy/deploy.sh --tou
 | `CADDY_CONTAINER` | `matrix-chat-caddy-1` | Caddy 容器名，找不到时自动搜名字含 caddy 的容器 |
 | `CADDY_NETWORK` | 自动探测 | Caddy 所在的 docker 网络 |
 | `CADDYFILE_HOST` | `/root/matrix-chat/Caddyfile` | 宿主上的 Caddyfile 路径 |
+| `TM_TOU_FILE` | 无 | 分时电价配置文件（按月份变化时用） |
 | `TM_TOU_GEOFENCE` | 自动 | 分时电价作用的地理围栏（名字或 ID） |
 | `FORCE` | `0` | 设为 `1` 时内存不足也继续部署 |
 

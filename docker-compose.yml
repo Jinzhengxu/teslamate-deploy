@@ -94,32 +94,35 @@ services:
       - caddy
     logging: *logging
 
-  # 分时电价：按时段电价给某个地理围栏（通常是家）里的充电算钱，写回 charging_processes.cost，
-  # TeslaMate 页面和所有 Grafana 面板直接就能看到。只处理 cost 为空的充电记录。
-  # 属于 tou profile：只有配了 TM_TOU_PRICES，deploy.sh 才会启动它。
-  # 围栏 ID 和各时段电价由 deploy.sh 生成到 .tou.env（条数不固定，没法写成固定的几行变量）。
-  teslamate-agile:
-    image: ghcr.io/amyjeanes/teslamateagile:latest
-    container_name: teslamate-agile
+  # 分时电价：每 5 分钟给某个地理围栏（通常是家）里刚结束、还没算钱的充电，
+  # 按每段电量所在的本地月份 + 时刻查电价，把费用写回 charging_processes.cost。
+  # 只读写本地数据库，不和特斯拉通信，不影响车休眠。
+  # 规则由 deploy.sh 从电价配置生成到 .tou.sql（单文件挂载，改了下一轮自动生效）。
+  # 属于 tou profile：只有配置了电价才会启动。镜像复用数据库那个，只用它自带的 psql。
+  teslamate-tou:
+    image: postgres:18-trixie
+    container_name: teslamate-tou
     restart: unless-stopped
     profiles:
       - tou
     depends_on:
       - teslamate-db
-    env_file:
-      - .tou.env
     environment:
-      - DATABASE_HOST=teslamate-db
-      - DATABASE_NAME=teslamate
-      - DATABASE_USER=teslamate
-      - DATABASE_PASS=${TM_DB_PASS:?未设置 TM_DB_PASS}
-      - TeslaMate__EnergyProvider=FixedPrice
-      - TeslaMate__UpdateIntervalSeconds=300
-      - FixedPrice__TimeZone=${TM_TZ:-Asia/Shanghai}
-      - Logging__Console__FormatterName=simple
-      - "Logging__Console__FormatterOptions__TimestampFormat=yyyy-MM-dd HH:mm:ss "
-    # .NET 会按容器上限自动收紧 GC，小机上给个硬上限防止它越长越大
-    mem_limit: 160m
+      - PGHOST=teslamate-db
+      - PGUSER=teslamate
+      - PGDATABASE=teslamate
+      - PGPASSWORD=${TM_DB_PASS:?未设置 TM_DB_PASS}
+    volumes:
+      - ./.tou.sql:/tou.sql:ro
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        while :; do
+          psql -X -q -t -A -v ON_ERROR_STOP=1 -f /tou.sql || echo "$$(date '+%F %T') tou: calc failed, retry in 5 min"
+          sleep 300
+        done
+    mem_limit: 64m
     logging: *logging
 
   # 不对外开放。以后接 Home Assistant 之类要用 MQTT 时，再加 ports: ["127.0.0.1:1883:1883"]

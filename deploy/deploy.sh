@@ -16,9 +16,11 @@
 #   bash deploy/deploy.sh --backup                 备份数据库到 backups/
 #   bash deploy/deploy.sh --rollback               下线容器并从 Caddyfile 移除站点块（数据卷保留）
 #
-# 分时电价（可选，TeslaMateAgile 按时段给家里的充电算钱）：
+# 分时电价（可选，按每段电量所在的月份和时刻给家里的充电算钱）：
+#   TM_TOU_FILE=deploy/tou/shandong-ev.conf bash deploy/deploy.sh --tou
+#                                                  按季节/月份变化的电价，用配置文件（格式见该文件）
 #   TM_TOU_PRICES='23:00-07:00=0.3,07:00-23:00=0.6' bash deploy/deploy.sh --tou
-#                                                  设置 / 修改电价（时段必须刚好覆盖 24 小时）
+#                                                  全年同一套时段时，直接写在命令行
 #   TM_TOU_RECALC=1 bash deploy/deploy.sh --tou    按当前电价重算该围栏里所有历史充电（先自动备份）
 #   TM_TOU_PRICES=off bash deploy/deploy.sh --tou  关闭分时电价
 #
@@ -41,6 +43,7 @@ ENV_FILE="$PROJECT_DIR/.env"
 _override_domain="${TM_DOMAIN:-}"
 _override_password="${TM_WEB_PASSWORD:-}"
 _override_tou="${TM_TOU_PRICES:-}"
+_override_tou_file="${TM_TOU_FILE:-}"
 _override_tou_gf="${TM_TOU_GEOFENCE:-}"
 if [[ -f "$ENV_FILE" ]]; then
   set -a
@@ -50,9 +53,11 @@ if [[ -f "$ENV_FILE" ]]; then
 fi
 [[ -n "$_override_domain" ]] && TM_DOMAIN="$_override_domain"
 TM_WEB_PASSWORD="$_override_password"
-[[ -n "$_override_tou" ]] && TM_TOU_PRICES="$_override_tou"
+# 命令行给了其中一种电价写法，就忽略 .env 里记着的另一种
+[[ -n "$_override_tou" ]] && { TM_TOU_PRICES="$_override_tou"; TM_TOU_FILE=""; }
+[[ -n "$_override_tou_file" ]] && { TM_TOU_FILE="$_override_tou_file"; TM_TOU_PRICES=""; }
 [[ -n "$_override_tou_gf" ]] && TM_TOU_GEOFENCE="$_override_tou_gf"
-unset _override_domain _override_password _override_tou _override_tou_gf
+unset _override_domain _override_password _override_tou _override_tou_file _override_tou_gf
 
 # ------------------------------------------------------------------ 参数与常量
 DOMAIN="${TM_DOMAIN:-}"
@@ -63,8 +68,9 @@ CADDY_NETWORK="${CADDY_NETWORK:-}"
 UPSTREAM_TIMEOUT=180
 # 去掉空格，顺手把中文逗号也认了
 TOU_PRICES="$(printf '%s' "${TM_TOU_PRICES:-}" | tr -d ' ' | sed 's/，/,/g')"
+TOU_FILE="${TM_TOU_FILE:-}"
 TOU_GEOFENCE="${TM_TOU_GEOFENCE:-}"
-TOU_ENV_FILE="$PROJECT_DIR/.tou.env"
+TOU_SQL_FILE="$PROJECT_DIR/.tou.sql"
 
 BEGIN_MARK='# >>> teslamate BEGIN'
 END_MARK='# <<< teslamate END'
@@ -329,15 +335,14 @@ prepare_env() {
   fi
   env_set TM_WEB_USER "$WEB_USER"
   chmod 600 "$ENV_FILE"
-  [[ -f "$TOU_ENV_FILE" ]] || : > "$TOU_ENV_FILE"
+  # 单文件挂载的源文件必须先存在，否则 docker 会把它建成目录
+  [[ -f "$TOU_SQL_FILE" ]] || : > "$TOU_SQL_FILE"
 }
 
 start_stack() {
   step "拉取镜像并启动（不映射任何宿主端口）"
   mkdir -p "$PROJECT_DIR/import"
-  # 只有 .tou.env 里已经有围栏 ID 才带上 tou profile：没有围栏 ID 的 TeslaMateAgile
-  # 会去给"不在任何围栏里"的充电（公共桩）按家里电价算钱，那是错的
-  if [[ -n "$TOU_PRICES" && "$TOU_PRICES" != "off" ]] && grep -q '^TeslaMate__GeofenceId=[0-9]' "$TOU_ENV_FILE" 2>/dev/null; then
+  if tou_enabled && [[ -s "$TOU_SQL_FILE" ]]; then
     export COMPOSE_PROFILES=tou
   fi
   dc pull || die "镜像拉取失败"
@@ -392,61 +397,171 @@ final_check() {
 # ------------------------------------------------------------------ 分时电价
 db_query() { docker exec teslamate-db psql -U teslamate -d teslamate -tA -F '|' -c "$1"; }
 
-# 校验 "23:00-07:00=0.3,07:00-23:00=0.6"：格式对，且一天里每一分钟恰好属于一个时段。
-# 不用 {n} 这种区间正则：Debian 默认的 mawk 老版本不认。
-tou_validate() {
-  printf '%s\n' "$1" | tr ',' '\n' | awk -F'[-=]' '
+tou_enabled() { [[ ( -n "$TOU_PRICES" && "$TOU_PRICES" != "off" ) || -n "$TOU_FILE" ]]; }
+
+# 两种写法统一成配置文件格式：TM_TOU_PRICES 相当于只有一组 [1-12]
+tou_source() {
+  if [[ -n "$TOU_FILE" ]]; then
+    local f="$TOU_FILE"
+    [[ "$f" == /* ]] || f="$PROJECT_DIR/$f"
+    [[ -f "$f" ]] || die "找不到电价配置文件：$f"
+    cat "$f"
+  else
+    printf '[1-12]\n'
+    printf '%s\n' "$TOU_PRICES" | tr ',' '\n'
+  fi
+}
+
+# 解析并校验电价配置，输出 "月|起|止|价"。12 个月都要有，每个月的时段恰好覆盖 24 小时。
+# 出错时只输出原因并返回 1。不用 {n} 这种区间正则：Debian 默认的 mawk 老版本不认。
+tou_parse() {
+  awk '
     function mins(t,  a) { split(t, a, ":"); return a[1] * 60 + a[2] }
+    function fail(msg) { printf "%s\n", msg; bad = 1; exit 1 }
+    { raw = $0; sub(/#.*/, ""); gsub(/[ \t\r]/, "") }
     $0 == "" { next }
-    {
-      if ($0 !~ /^[0-9][0-9]:[0-5][0-9]-[0-9][0-9]:[0-5][0-9]=[0-9]+(\.[0-9]+)?$/ || substr($1, 1, 2) + 0 > 23 || substr($2, 1, 2) + 0 > 23) {
-        printf "格式不对：%s（应为 HH:MM-HH:MM=每度电价，午夜写 00:00）\n", $0; bad = 1; next
+    /^\[.*\]$/ {
+      spec = substr($0, 2, length($0) - 2); nm = 0
+      n = split(spec, parts, ",")
+      for (i = 1; i <= n; i++) {
+        if (parts[i] ~ /^[0-9]+-[0-9]+$/) { split(parts[i], ab, "-"); a = ab[1] + 0; b = ab[2] + 0 }
+        else if (parts[i] ~ /^[0-9]+$/) { a = parts[i] + 0; b = a }
+        else fail("月份写法不对：[" spec "]（例：[1-2,12]）")
+        if (a < 1 || b > 12 || a > b) fail("月份超出 1-12：[" spec "]")
+        for (m = a; m <= b; m++) {
+          if (m in seen) fail(m " 月同时出现在多个分组里")
+          seen[m] = 1; cur[++nm] = m
+        }
       }
-      s = mins($1); e = mins($2)
-      if (s == e) { printf "起止时间相同：%s\n", $0; bad = 1; next }
-      for (m = s; m != e; m = (m + 1) % 1440) cover[m]++
-      n++
+      next
+    }
+    {
+      if (nm == 0) fail("时段写在了月份分组前面，先写 [月份]：" raw)
+      if ($0 !~ /^[0-9][0-9]:[0-5][0-9]-[0-9][0-9]:[0-5][0-9]=[0-9]+(\.[0-9]+)?$/)
+        fail("格式不对：" $0 "（应为 HH:MM-HH:MM=每度电价，午夜写 00:00）")
+      split($0, kv, "="); split(kv[1], se, "-")
+      if (substr(se[1], 1, 2) + 0 > 23 || substr(se[2], 1, 2) + 0 > 23) fail("小时超出 00-23：" $0 "（午夜写 00:00）")
+      s = mins(se[1]); e = mins(se[2])
+      if (s == e) fail("起止时间相同：" $0)
+      for (i = 1; i <= nm; i++) {
+        for (t = s; t != e; t = (t + 1) % 1440) cover[cur[i], t]++
+        out[++no] = cur[i] "|" se[1] "|" se[2] "|" kv[2]
+      }
     }
     END {
       if (bad) exit 1
-      if (n == 0) { print "一个时段都没有"; exit 1 }
-      for (m = 0; m < 1440; m++) {
-        if (cover[m] != 1) {
-          printf "%02d:%02d %s\n", int(m / 60), m % 60, (cover[m] ? "被多个时段重复覆盖" : "不在任何时段里"); exit 1
+      for (m = 1; m <= 12; m++) {
+        if (!(m in seen)) { printf "%d 月没有配置电价\n", m; exit 1 }
+        for (t = 0; t < 1440; t++) if (cover[m, t] != 1) {
+          printf "%d 月 %02d:%02d %s\n", m, int(t / 60), t % 60, (cover[m, t] ? "被多个时段重复覆盖" : "不在任何时段里")
+          exit 1
         }
       }
+      for (i = 1; i <= no; i++) print out[i]
     }'
 }
 
+# 由解析后的规则生成计费 SQL。$1 = 规则文件，$2 = 地理围栏 ID
+tou_sql() {
+  local tz="${TM_TZ:-Asia/Shanghai}" values
+  values="$(awk -F'|' -v q="'" '{ printf "%s    (%d, time %s%s%s, time %s%s%s, %s::numeric)", (NR > 1 ? ",\n" : ""), $1, q, $2, q, q, $3, q, $4 }' "$1")"
+  cat <<EOF
+-- 由 deploy/deploy.sh 生成，别手改；改电价请重新运行 deploy.sh --tou
+with price(month, t_from, t_to, price) as (
+  values
+$values
+),
+todo as (
+  -- 计费电量和 TeslaMate 自己按固定电价算钱时一致：充入电量和耗电量取大的那个
+  select id, start_date,
+         greatest(coalesce(charge_energy_used, 0), coalesce(charge_energy_added, 0)) as kwh
+  from charging_processes
+  where geofence_id = $2 and end_date is not null and cost is null
+    and coalesce(charge_energy_used, charge_energy_added) is not null
+),
+seg as (
+  -- 相邻两次采样之间的电量（功率 × 间隔，和 TeslaMate 算耗电量的口径一致），
+  -- 按区间起点的本地月份和时刻计价
+  select c.charging_process_id as pid,
+         ((lag(c.date) over win) at time zone 'UTC' at time zone '$tz') as lt,
+         greatest(coalesce(c.charger_actual_current * c.charger_voltage * coalesce(c.charger_phases, 1) / 1000.0,
+                           c.charger_power, 0), 0)
+           * extract(epoch from c.date - (lag(c.date) over win)) as e
+  from charges c
+  join todo t on t.id = c.charging_process_id
+  window win as (partition by c.charging_process_id order by c.date)
+),
+priced as (
+  select s.pid, sum(s.e * p.price) / nullif(sum(s.e), 0) as avg_price
+  from seg s
+  join price p on p.month = extract(month from s.lt)
+   and case when p.t_from < p.t_to then s.lt::time >= p.t_from and s.lt::time < p.t_to
+            else s.lt::time >= p.t_from or s.lt::time < p.t_to end
+  where s.lt is not null
+  group by s.pid
+),
+fallback as (
+  -- 采样不够用（比如只有一个点、功率全是 0）时，按开始时刻的电价算
+  select t.id as pid, p.price
+  from todo t
+  cross join lateral (select (t.start_date at time zone 'UTC' at time zone '$tz') as lt) l
+  join price p on p.month = extract(month from l.lt)
+   and case when p.t_from < p.t_to then l.lt::time >= p.t_from and l.lt::time < p.t_to
+            else l.lt::time >= p.t_from or l.lt::time < p.t_to end
+),
+upd as (
+  update charging_processes cp
+     set cost = round(t.kwh * coalesce(pr.avg_price, fb.price), 2)
+    from todo t
+    left join priced pr on pr.pid = t.id
+    left join fallback fb on fb.pid = t.id
+   where cp.id = t.id
+     and coalesce(pr.avg_price, fb.price) is not null
+  returning cp.id, t.kwh, cp.cost
+)
+select to_char(now() at time zone '$tz', 'YYYY-MM-DD HH24:MI:SS') || ' tou: charge #' || id || ' '
+       || round(kwh, 2) || ' kWh -> ' || cost || ' CNY'
+from upd order by id;
+EOF
+}
+
 configure_tou() {
+  # 早先的版本用过 TeslaMateAgile，顺手清掉
+  docker rm -f teslamate-agile >/dev/null 2>&1 || true
+  rm -f "$PROJECT_DIR/.tou.env"
+
   if [[ "$TOU_PRICES" == "off" ]]; then
     step "关闭分时电价"
-    docker rm -f teslamate-agile >/dev/null 2>&1 || true
-    : > "$TOU_ENV_FILE"
+    docker rm -f teslamate-tou >/dev/null 2>&1 || true
+    : > "$TOU_SQL_FILE"
     env_unset TM_TOU_PRICES
+    env_unset TM_TOU_FILE
     env_unset TM_TOU_GEOFENCE
-    ok "已停用 TeslaMateAgile，已算好的历史费用保留不动"
+    ok "已停用分时电价计算，已算好的历史费用保留不动"
     return 0
   fi
-  [[ -n "$TOU_PRICES" ]] || return 0
+  tou_enabled || return 0
 
-  step "配置分时电价（TeslaMateAgile）"
+  step "配置分时电价"
   docker inspect teslamate-db >/dev/null 2>&1 || die "teslamate-db 没在运行，先完整部署一次：bash deploy/deploy.sh"
 
-  local err
-  err="$(tou_validate "$TOU_PRICES")" || die "电价配置有误：$err
-  示例（谷 23-7 点 0.3 元，其余 0.6 元）：TM_TOU_PRICES='23:00-07:00=0.3,07:00-23:00=0.6'"
-  ok "电价时段校验通过，刚好覆盖 24 小时："
-  printf '%s\n' "$TOU_PRICES" | tr ',' '\n' | sed 's/=/  →  /; s/$/ 元\/度/; s/^/      /'
+  local rules="$WORK_DIR/tou.rules"
+  tou_source > "$WORK_DIR/tou.src"
+  tou_parse < "$WORK_DIR/tou.src" > "$rules" || die "电价配置有误：$(cat "$rules")"
+  ok "电价配置校验通过：12 个月都有，每个月的时段都刚好覆盖 24 小时"
+
+  local month_now
+  month_now="$(TZ="${TM_TZ:-Asia/Shanghai}" date +%-m)"
+  info "本月（${month_now} 月）的时段："
+  awk -F'|' -v m="$month_now" '$1 == m { printf "      %s-%s  →  %s 元/度\n", $2, $3, $4 }' "$rules" | sort
 
   # ---- 选地理围栏
-  local rows gf_id gf_name gf_cost
+  local rows gf_id gf_name gf_cost line
   rows="$(db_query "select id, name, coalesce(cost_per_unit::text, '') from geofences order by id")"
   if [[ -z "$rows" ]]; then
     die "TeslaMate 里还没有地理围栏。先到 TeslaMate → Geo-Fences 新建一个“家”（电价那栏留空），再重跑"
   fi
   if [[ -n "$TOU_GEOFENCE" ]]; then
-    local line
     line="$(printf '%s\n' "$rows" | awk -F'|' -v g="$TOU_GEOFENCE" '$1 == g || $2 == g' | head -n 1)"
     [[ -n "$line" ]] || die "找不到地理围栏「$TOU_GEOFENCE」。现有的围栏（ID|名字|固定电价）：
 $(printf '%s\n' "$rows" | sed 's/^/      /')"
@@ -462,39 +577,48 @@ $(printf '%s\n' "$rows" | sed 's/^/      /')"
 
   if [[ -n "$gf_cost" ]]; then
     warn "这个围栏在 TeslaMate 里填了固定电价 $gf_cost：TeslaMate 会在充电结束时先按它写入费用，"
-    warn "TeslaMateAgile 只处理费用为空的记录，于是分时电价永远轮不到。"
+    warn "而分时电价只处理费用为空的记录，于是永远轮不到。"
     warn "请到 TeslaMate → Geo-Fences 编辑「$gf_name」，把电价清空保存，然后重算：TM_TOU_RECALC=1 bash deploy/deploy.sh --tou"
   fi
 
-  env_set TM_TOU_PRICES "$TOU_PRICES"
+  if [[ -n "$TOU_FILE" ]]; then
+    env_set TM_TOU_FILE "$TOU_FILE"
+    env_unset TM_TOU_PRICES
+  else
+    env_set TM_TOU_PRICES "$TOU_PRICES"
+    env_unset TM_TOU_FILE
+  fi
   env_set TM_TOU_GEOFENCE "$gf_id"
-  {
-    printf '# 由 deploy/deploy.sh 生成，别手改。改电价：TM_TOU_PRICES=... bash deploy/deploy.sh --tou\n'
-    printf 'TeslaMate__GeofenceId=%s\n' "$gf_id"
-    printf '%s\n' "$TOU_PRICES" | tr ',' '\n' | awk 'NF { printf "FixedPrice__Prices__%d=%s\n", i++, $0 }'
-  } > "$TOU_ENV_FILE"
-  chmod 600 "$TOU_ENV_FILE"
+
+  # 原地写：.tou.sql 是单文件挂载，换 inode 的话容器里看到的还是旧文件
+  tou_sql "$rules" "$gf_id" > "$WORK_DIR/tou.sql"
+  cat "$WORK_DIR/tou.sql" > "$TOU_SQL_FILE"
 
   if [[ "${TM_TOU_RECALC:-0}" == "1" ]]; then
     do_backup
     local n
     n="$(db_query "with u as (update charging_processes set cost = null where geofence_id = $gf_id returning 1) select count(*) from u")"
-    ok "已清空该围栏内 $n 次充电的费用，TeslaMateAgile 会按当前电价重算"
+    ok "已清空该围栏内 $n 次充电的费用，马上按当前电价重算"
+  fi
+
+  # 先在这里直接算一轮再起定时容器：既能马上看到结果，也顺便验证生成的 SQL 能跑。
+  # 反过来的话，容器一启动就把活干完了，这里什么也看不到。
+  local out
+  if ! out="$(docker exec -i teslamate-db psql -U teslamate -d teslamate -X -q -t -A -v ON_ERROR_STOP=1 < "$TOU_SQL_FILE" 2>&1)"; then
+    printf '%s\n' "$out" | tail -n 20 | sed 's/^/      /'
+    die "计费 SQL 执行失败（上面是报错）"
+  fi
+  if [[ -n "$out" ]]; then
+    ok "本次算好了 $(printf '%s\n' "$out" | wc -l) 次充电（最多显示 10 条）："
+    printf '%s\n' "$out" | tail -n 10 | sed 's/^/      /'
+  else
+    ok "目前没有待计算的充电"
   fi
 
   export COMPOSE_PROFILES=tou
-  dc pull teslamate-agile >/dev/null 2>&1 || warn "teslamate-agile 镜像拉取失败，尝试用本地已有镜像"
-  dc up -d teslamate-agile || die "teslamate-agile 启动失败"
-
-  # 启动后给它几秒连库、读配置；配置错了它会直接退出
-  sleep 8
-  if [[ "$(docker inspect -f '{{.State.Running}}' teslamate-agile 2>/dev/null)" == "true" ]]; then
-    ok "TeslaMateAgile 运行中，每 5 分钟检查一次新完成的充电"
-    dim "每次算费过程可看：docker logs -f teslamate-agile"
-  else
-    docker logs --tail 30 teslamate-agile 2>&1 | sed 's/^/      /'
-    die "TeslaMateAgile 没能保持运行（上面是它的日志）"
-  fi
+  dc up -d teslamate-tou || die "teslamate-tou 启动失败"
+  ok "定时计算已启动：以后每次在这个围栏里充完电，5 分钟内自动算好"
+  dim "计算记录：docker logs -f teslamate-tou"
 }
 
 print_next_steps() {
@@ -532,7 +656,7 @@ ${C_BOLD}3) 连上你的车${C_RESET}
 ${C_BOLD}常用命令${C_RESET}
    升级            bash deploy/deploy.sh
    备份数据库      bash deploy/deploy.sh --backup
-   分时电价        TM_TOU_PRICES='23:00-07:00=0.3,07:00-23:00=0.6' bash deploy/deploy.sh --tou
+   分时电价        TM_TOU_FILE=deploy/tou/shandong-ev.conf bash deploy/deploy.sh --tou
    看日志          docker logs -f teslamate
    下线            bash deploy/deploy.sh --rollback   ${C_DIM}（数据卷保留）${C_RESET}
 
@@ -573,8 +697,9 @@ do_deploy() {
 }
 
 do_tou() {
-  [[ -n "$TOU_PRICES" ]] || die "请给出各时段电价，例如：
-    TM_TOU_PRICES='23:00-07:00=0.3,07:00-23:00=0.6' bash deploy/deploy.sh --tou
+  [[ -n "$TOU_PRICES" || -n "$TOU_FILE" ]] || die "请给出电价，例如：
+    按季节变化：TM_TOU_FILE=deploy/tou/shandong-ev.conf bash deploy/deploy.sh --tou
+    全年一套：  TM_TOU_PRICES='23:00-07:00=0.3,07:00-23:00=0.6' bash deploy/deploy.sh --tou
   关闭：TM_TOU_PRICES=off bash deploy/deploy.sh --tou"
   [[ -f "$ENV_FILE" ]] || die "找不到 $ENV_FILE，先完整部署一次：TM_DOMAIN=... bash deploy/deploy.sh"
   configure_tou
@@ -585,10 +710,10 @@ do_rollback() {
   detect_caddy
   update_caddyfile remove
   step "停止并移除容器（不加 -v，数据卷保留）"
-  # 带上 tou profile，compose 才认得 teslamate-agile，否则它会被落下
+  # 带上 tou profile，compose 才认得 teslamate-tou，否则它会被落下
   export COMPOSE_PROFILES=tou
-  [[ -f "$TOU_ENV_FILE" ]] || : > "$TOU_ENV_FILE"
-  dc down --remove-orphans || warn "docker compose down 失败，可手工 docker rm -f teslamate teslamate-db teslamate-grafana teslamate-mqtt teslamate-agile"
+  [[ -f "$TOU_SQL_FILE" ]] || : > "$TOU_SQL_FILE"
+  dc down --remove-orphans || warn "docker compose down 失败，可手工 docker rm -f teslamate teslamate-db teslamate-grafana teslamate-mqtt teslamate-tou"
   cat <<EOF
 
 ${C_BOLD}${C_GREEN}回滚完成。${C_RESET}
