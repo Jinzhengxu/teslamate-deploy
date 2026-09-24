@@ -1,0 +1,7 @@
+/* 足迹（pages/visited.js）专用样式。只用 stats.css 的设计变量，亮暗自动适配。
+   地图高度由 ui.mapBox(id, { height, maxVh }) 定，这里别再改 .tm-map 的 height（会盖掉 maxVh） */
+
+.pg-visited-foot {
+  padding: 10px 16px 12px;
+  border-top: 1px solid var(--tm-line);
+}

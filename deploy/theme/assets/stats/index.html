@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f2f3f5">
+<meta name="robots" content="noindex">
+<title>统计 · TeslaMate</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<script>
+  // 在样式生效之前先定好亮 / 暗，避免暗色模式下先闪一下白。
+  // 主题以 TeslaMate 设置为准，app.js 读到设置后会写进 localStorage，这里用上次的结果；?theme= 是调试参数
+  (function () {
+    var d = document.documentElement, t = null, m = null;
+    try {
+      var q = new URLSearchParams(location.search).get("theme");
+      if (q === "dark" || q === "light") t = q;
+    } catch (e) {}
+    if (!t) {
+      try { m = localStorage.getItem("tm-stats-theme"); } catch (e) {}
+      t = m === "dark" || m === "light" ? m
+        : window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }
+    d.setAttribute("data-theme", t);
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", t === "dark" ? "#0b0c0e" : "#f2f3f5");
+  })();
+</script>
+<link rel="stylesheet" href="/stats/stats.css">
+<link rel="modulepreload" href="/stats/app.js">
+<link rel="modulepreload" href="/stats/core/api.js">
+<link rel="modulepreload" href="/stats/core/format.js">
+<link rel="modulepreload" href="/stats/core/ui.js">
+<link rel="modulepreload" href="/stats/core/icons.js">
+<link rel="modulepreload" href="/stats/core/range.js">
+<link rel="modulepreload" href="/stats/pages/registry.js">
+<script type="module" src="/stats/app.js"></script>
+</head>
+<body>
+<noscript><p style="padding:24px 16px;font:15px/1.5 sans-serif">统计页需要开启 JavaScript。</p></noscript>
+</body>
+</html>

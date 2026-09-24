@@ -1,0 +1,183 @@
+/* 电池健康页（pages/battery.js）专用样式。只用设计变量，亮暗自动适配 */
+
+/* 顶部：手机上健康卡片在上、四个数字在下；桌面左右并排，数字格子撑满卡片高度 */
+.pg-battery-top {
+  display: grid;
+  gap: 10px;
+}
+
+@media screen and (min-width: 1024px) {
+  .pg-battery-top {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .pg-battery-top > .tm-stats {
+    grid-auto-rows: 1fr;
+  }
+
+  /* 格子被拉到和左边卡片一样高，内容竖直居中，免得下半截空着 */
+  .pg-battery-top > .tm-stats > .tm-stat {
+    justify-content: center;
+  }
+}
+
+.pg-battery-hero {
+  display: grid;
+  gap: 14px;
+}
+
+.pg-battery-block {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pg-battery-block + .pg-battery-block {
+  padding-top: 14px;
+  border-top: 1px solid var(--tm-line);
+}
+
+.pg-battery-label {
+  color: var(--tm-text-hint);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.pg-battery-big {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+.pg-battery-num {
+  color: var(--tm-text);
+  font-family: var(--tm-font-display);
+  font-size: 40px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.pg-battery-num.is-sm {
+  font-size: 30px;
+}
+
+.pg-battery-num small {
+  margin-left: 2px;
+  color: var(--tm-text-2);
+  font-size: 0.45em;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.pg-battery-deg {
+  color: var(--tm-text-2);
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.pg-battery-hero .tm-bar {
+  height: 8px;
+}
+
+.pg-battery-hero .tm-note {
+  margin-top: 2px;
+}
+
+/* 交流 / 直流比例条 + 图例（面板里是饼图，手机上横条更省地方） */
+.pg-battery-acdc-head {
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+
+.pg-battery-split {
+  display: flex;
+  gap: 2px;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--tm-track);
+}
+
+.pg-battery-split span {
+  min-width: 3px;
+}
+
+.pg-battery-split .is-ac,
+.pg-battery-split-legend i.is-ac {
+  background: var(--tm-c4);
+}
+
+.pg-battery-split .is-dc,
+.pg-battery-split-legend i.is-dc {
+  background: var(--tm-c2);
+}
+
+.pg-battery-split-legend {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  font-size: 14px;
+}
+
+.pg-battery-split-legend div {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto 44px;
+  align-items: center;
+  gap: 8px;
+}
+
+.pg-battery-split-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.pg-battery-split-legend span {
+  overflow: hidden;
+  color: var(--tm-text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pg-battery-split-legend b {
+  color: var(--tm-text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.pg-battery-split-legend em {
+  color: var(--tm-text-hint);
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* 「这些数字是怎么算的」（ui.details）里的说明列表 */
+.pg-battery-faq {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.pg-battery-faq dt {
+  margin-top: 8px;
+  color: var(--tm-text);
+  font-weight: 600;
+}
+
+.pg-battery-faq dt:first-child {
+  margin-top: 0;
+}
+
+.pg-battery-faq dd {
+  margin: 0;
+  color: var(--tm-text-2);
+}

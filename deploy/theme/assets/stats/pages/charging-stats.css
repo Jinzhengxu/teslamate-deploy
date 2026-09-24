@@ -1,0 +1,122 @@
+/*
+ * 充电统计页（pages/charging-stats.js）自己的样式。类名一律 pg-cs- 开头；颜色只用设计变量，亮暗自动适配。
+ */
+
+/* ------------------------------------------------------------------ 交流 / 直流占比 */
+
+.pg-cs-splits {
+  display: grid;
+  gap: 22px;
+}
+
+@media screen and (min-width: 769px) {
+  .pg-cs-splits {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 32px;
+  }
+}
+
+.pg-cs-split {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  color: var(--tm-text);
+  font-size: 14.5px;
+}
+
+/* 两段之间留 2px 卡片底色的缝，别画边框 */
+.pg-cs-split-bar {
+  display: flex;
+  gap: 2px;
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--tm-track);
+}
+
+.pg-cs-split-bar span {
+  flex: 1 1 0;
+  min-width: 3px;
+}
+
+.pg-cs-split-bar .is-ac,
+.pg-cs-split-legend i.is-ac {
+  background: var(--tm-c4);
+}
+
+.pg-cs-split-bar .is-dc,
+.pg-cs-split-legend i.is-dc {
+  background: var(--tm-c2);
+}
+
+.pg-cs-split-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  color: var(--tm-text-2);
+  font-size: 13px;
+}
+
+.pg-cs-split-legend span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.pg-cs-split-legend i {
+  display: inline-block;
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  transform: translateY(-1px);
+}
+
+.pg-cs-split-legend b {
+  color: var(--tm-text);
+  font-weight: 600;
+}
+
+.pg-cs-split-legend em,
+.pg-cs-soc-n em {
+  color: var(--tm-text-hint);
+  font-style: normal;
+}
+
+/* ------------------------------------------------------------------ 电量分布（Charge / Discharge Stats） */
+
+.pg-cs-soc {
+  display: grid;
+  gap: 9px;
+}
+
+.pg-cs-soc-row {
+  display: grid;
+  grid-template-columns: 3.2em minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.pg-cs-soc-label {
+  color: var(--tm-text);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: right;
+}
+
+.pg-cs-soc-n {
+  display: inline-flex;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 6.4em;
+  color: var(--tm-text);
+  font-size: 13.5px;
+  white-space: nowrap;
+}
+
+.pg-cs-soc-n em {
+  min-width: 2.8em;
+  text-align: right;
+}

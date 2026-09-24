@@ -1,0 +1,116 @@
+/* 能耗（pages/efficiency.js）专用样式。颜色只用设计变量，亮暗自动适配 */
+
+/* 「气温与能耗」卡片：上半截（筛选、图、说明）留卡片内边距，下面的气温表铺满卡片，行线通到两边 */
+.pg-eff-top {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.pg-eff-card .tm-table-wrap {
+  border-top: 1px solid var(--tm-line);
+}
+
+/* 表格首尾两列和上面的内容对齐（卡片内边距手机 16、桌面 20） */
+.pg-eff-card .tm-table tr > :first-child {
+  padding-left: 16px;
+}
+
+.pg-eff-card .tm-table tr > :last-child {
+  padding-right: 16px;
+}
+
+/* 表头第二行小字是单位 */
+.pg-eff-card .tm-table th {
+  vertical-align: bottom;
+}
+
+.pg-eff-card .tm-table th small {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+@media screen and (min-width: 769px) {
+  .pg-eff-top {
+    gap: 16px;
+    padding: 20px;
+  }
+
+  .pg-eff-card .tm-table tr > :first-child {
+    padding-left: 20px;
+  }
+
+  .pg-eff-card .tm-table tr > :last-child {
+    padding-right: 20px;
+  }
+}
+
+/* 图下面参考虚线的说明，前面画一小段虚线当图例 */
+.pg-eff-ref {
+  margin-top: -8px;
+}
+
+.pg-eff-ref i {
+  display: inline-block;
+  width: 18px;
+  margin-right: 6px;
+  border-top: 1.5px dashed var(--tm-text-2);
+  vertical-align: middle;
+}
+
+/* 驾驶效率：进度条 + 百分数 */
+.pg-eff-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 96px;
+}
+
+.pg-eff-bar .tm-bar {
+  flex: 1;
+  min-width: 36px;
+}
+
+.pg-eff-bar > span {
+  flex: none;
+  min-width: 44px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: right;
+}
+
+@media screen and (max-width: 600px) {
+  .pg-eff-bar {
+    min-width: 0;
+    gap: 6px;
+  }
+
+  .pg-eff-bar .tm-bar {
+    min-width: 24px;
+  }
+}
+
+/* 320 宽放不下 5 列：进度条收起，只留带颜色的百分数 */
+@media screen and (max-width: 374px) {
+  .pg-eff-bar .tm-bar {
+    display: none;
+  }
+
+  .pg-eff-bar > span {
+    min-width: 0;
+  }
+}
+
+/* 进阶折叠区里的两块：按理想 / 额定续航推算 */
+.pg-eff-derived {
+  min-width: 0;
+  padding: 12px 14px 4px;
+  border: 1px solid var(--tm-line);
+  border-radius: var(--tm-r-md);
+}
+
+.pg-eff-derived .tm-card-title {
+  margin-bottom: 4px;
+  font-size: 14px;
+}

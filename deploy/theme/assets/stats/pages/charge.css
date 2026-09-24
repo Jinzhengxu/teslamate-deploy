@@ -1,0 +1,226 @@
+/* 充电详情页（/stats/charges/:id）专用样式。只用 stats.css 的设计变量，亮暗自动适配。
+   页面样式离开后还留在 <head> 里，所以类名都带 pg-charge- 前缀，碰公共类时挂在页面根 .pg-charge 下面 */
+
+/* ---------------------------------------------------------------- 顶部：地图 + 地点、时间、标签 */
+
+.pg-charge-top {
+  align-items: start;
+}
+
+.pg-charge-hero {
+  overflow: hidden;
+}
+
+/* 地图贴着卡片上沿，圆角由卡片裁掉 */
+.pg-charge-hero .tm-map-wrap {
+  border-radius: 0;
+}
+
+.pg-charge-hero-body {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px 12px;
+}
+
+@media screen and (min-width: 769px) {
+  .pg-charge-hero-body {
+    padding: 18px 20px 14px;
+  }
+}
+
+.pg-charge-hero-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.pg-charge-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--tm-accent-soft);
+  color: var(--tm-accent);
+}
+
+.pg-charge-badge .tm-svg {
+  width: 22px;
+  height: 22px;
+}
+
+.pg-charge-badge.is-green {
+  background: var(--tm-green-soft);
+  color: var(--tm-green-text);
+}
+
+.pg-charge-badge.is-amber {
+  background: var(--tm-amber-soft);
+  color: var(--tm-amber-text);
+}
+
+.pg-charge-hero-text {
+  min-width: 0;
+}
+
+.pg-charge-place {
+  color: var(--tm-text);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.pg-charge-addr {
+  color: var(--tm-text-hint);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.pg-charge-when {
+  color: var(--tm-text-2);
+  font-size: 14px;
+}
+
+.pg-charge-tags {
+  gap: 6px;
+}
+
+.pg-charge-actions {
+  gap: 4px 8px;
+  margin: 2px -8px 0 -4px;
+}
+
+.pg-charge-actions .tm-btn {
+  height: 34px;
+  padding: 0 10px;
+}
+
+.pg-charge-actions .tm-btn.is-soft {
+  margin-left: 4px;
+}
+
+/* ---------------------------------------------------------------- 没有结束的充电：正在充（绿）/ 中途断掉（琥珀） */
+
+.pg-charge-warn-card {
+  border-color: transparent;
+  background: var(--tm-amber-soft);
+  box-shadow: none;
+}
+
+.pg-charge-warn-card.is-live {
+  background: var(--tm-green-soft);
+}
+
+.pg-charge-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--tm-text);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.pg-charge-warn .tm-svg {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  color: var(--tm-amber-text);
+}
+
+.pg-charge-warn.is-live .tm-svg {
+  color: var(--tm-green-text);
+}
+
+.pg-charge-warn a {
+  font-weight: 500;
+}
+
+.pg-charge-note {
+  margin-top: -6px;
+  padding: 0 4px;
+}
+
+/* ---------------------------------------------------------------- 上一次 / 下一次（和行程详情 drive.css 的一样） */
+
+.pg-charge-nav {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.pg-charge-nav-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--tm-line);
+  border-radius: var(--tm-r-md);
+  background: var(--tm-surface);
+  box-shadow: var(--tm-shadow);
+  color: var(--tm-text-2);
+  transition: background-color 0.12s;
+}
+
+a.pg-charge-nav-cell:hover {
+  background: var(--tm-surface-2);
+}
+
+a.pg-charge-nav-cell:active {
+  background: var(--tm-surface-3);
+}
+
+.pg-charge-nav-cell.is-next {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.pg-charge-nav-cell.is-empty {
+  box-shadow: none;
+  background: transparent;
+  font-size: 13px;
+}
+
+.pg-charge-nav-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--tm-accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pg-charge-nav-cell.is-empty .pg-charge-nav-label {
+  color: var(--tm-text-hint);
+}
+
+.pg-charge-nav-label .tm-svg {
+  width: 16px;
+  height: 16px;
+}
+
+.pg-charge-nav-title {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--tm-text);
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* 320 宽时「2025年10月1日 · 7.0 kWh」一行放不下，折到第二行（数字和单位之间是不换行空格） */
+.pg-charge-nav-sub {
+  max-width: 100%;
+  color: var(--tm-text-hint);
+  font-size: 12.5px;
+}

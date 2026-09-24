@@ -1,0 +1,99 @@
+/* 电量和里程、续航变化两页共用的图例表（pages/_series.js 的 legendTable）。
+   levels.css、projected-range.css 开头 @import 这个文件。只用设计变量，亮暗自动适配 */
+
+.pg-series-legend {
+  width: 100%;
+  margin-top: 10px;
+  border-collapse: collapse;
+  color: var(--tm-text);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pg-series-legend th,
+.pg-series-legend td {
+  padding: 7px 0 7px 8px;
+  border-top: 1px solid var(--tm-line);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.pg-series-legend thead th {
+  padding-top: 0;
+  border-top: 0;
+  color: var(--tm-text-hint);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* 名字列占满剩下的宽度，放不下就省略号；数字列按内容撑开（窄屏上 18,362 km 这种也不会挤到一起） */
+.pg-series-legend th:first-child {
+  width: 100%;
+  max-width: 0;
+  padding-left: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+}
+
+.pg-series-legend tbody th {
+  font-weight: 500;
+}
+
+/* 色块：实线系列是方块，虚线系列（移动平均）画成一小段虚线 */
+.pg-series-legend tbody th i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 3px;
+  background: currentColor;
+  vertical-align: -1px;
+}
+
+.pg-series-legend tbody th i.is-dashed {
+  height: 0;
+  border-top: 2px dashed currentColor;
+  border-radius: 0;
+  background: none;
+  vertical-align: 3px;
+}
+
+/* 可以点的图例表（点一行隐藏 / 显示那条线） */
+.pg-series-legend.is-toggle tbody tr {
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.pg-series-legend.is-toggle tbody tr:hover th {
+  text-decoration: underline;
+  text-decoration-color: var(--tm-line-strong);
+  text-underline-offset: 3px;
+}
+
+.pg-series-legend.is-toggle tbody tr:focus-visible {
+  outline: 2px solid var(--tm-accent);
+  outline-offset: -2px;
+}
+
+/* 隐藏的线：整行变淡 */
+.pg-series-legend.is-toggle tbody tr[aria-pressed="false"] {
+  opacity: 0.4;
+}
+
+@media screen and (max-width: 374px) {
+  .pg-series-legend {
+    font-size: 12px;
+  }
+
+  .pg-series-legend.is-short-units .pg-series-unit {
+    display: none;
+  }
+}
+
+/* 宽屏上表格别铺满整张卡片，数字离名字太远不好对 */
+@media screen and (min-width: 769px) {
+  .pg-series-legend {
+    max-width: 600px;
+  }
+}
