@@ -1,30 +1,174 @@
 # >>> teslamate BEGIN
 # TeslaMate —— 本段由 deploy/deploy.sh 按上下两行标记【整块】幂等替换，
 # 请不要在 BEGIN / END 之间放别的站点配置，否则重新部署时会被覆盖掉。
-# 下面用双下划线包起来的大写单词都是占位符（域名、认证指令名、用户名、密码哈希、上游），写入时替换。
+# 下面用双下划线包起来的大写单词都是占位符（域名、认证指令名、用户名、密码哈希、登录凭证、上游），写入时替换。
 __DOMAIN__ {
 	encode zstd gzip
 
-	# Grafana 自带登录。它开了 SERVE_FROM_SUB_PATH，要收到带 /grafana 前缀的原始路径，
-	# 所以这里用 handle 而不是 handle_path。
-	@grafana path /grafana /grafana/*
-	handle @grafana {
-		reverse_proxy teslamate-grafana:3000
+	# ---- 登录
+	# TeslaMate 本身没有任何登录：谁打开都能看到车的实时位置、改设置，所以这一层密码是必须的。
+	# 密码只在登录页验一次，验过就发一个长期 cookie（tm_auth），之后这台设备不用再输。
+	# cookie 的值是 .env 里的 TM_WEB_TOKEN，重置密码时会换掉，所有设备随之退出。
+	# 验证全在 Caddy 里做，不依赖换肤代理：换肤代理挂了不会绕过登录。
+
+	# 登录页的「登录」按钮用 fetch 把用户名密码（Basic 认证头）发到这里
+	handle /_auth/verify {
+		route {
+			__BASIC_AUTH__ {
+				__AUTH_USER__ __AUTH_HASH__
+			}
+			header Set-Cookie "tm_auth=__AUTH_TOKEN__; Path=/; Max-Age=34560000; Secure; HttpOnly; SameSite=Lax"
+			header Cache-Control no-store
+			respond 204
+		}
 	}
 
-	# TeslaMate 本身没有任何登录：谁打开都能看到车的实时位置、改设置，
-	# 所以这一层密码是必须的，不是可选项。
-	handle {
-		__BASIC_AUTH__ {
-			__AUTH_USER__ __AUTH_HASH__
+	# 只退出当前这台设备；要让所有设备都退出，就重置密码
+	handle /_auth/logout {
+		header Set-Cookie "tm_auth=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax"
+		redir * / 302
+	}
+
+	# 用单引号：老版本 Caddy（2.4）解析这一行时会把双引号吃掉，CEL 就不认得这是字符串了
+	@authed expression {http.request.cookie.tm_auth} == '__AUTH_TOKEN__'
+	handle @authed {
+		# 每次打开页面顺手把 cookie 续到 400 天（浏览器允许的上限），常用的设备就一直不用重新登录
+		@page header Sec-Fetch-Mode navigate
+		header @page +Set-Cookie "tm_auth=__AUTH_TOKEN__; Path=/; Max-Age=34560000; Secure; HttpOnly; SameSite=Lax"
+
+		# Grafana 开了 auth proxy：认 X-WEBAUTH-USER 头里的用户名，不再单独要密码。
+		# header_up 是覆盖，浏览器自己带来的同名头到不了 Grafana。
+		# 它开了 SERVE_FROM_SUB_PATH，要收到带 /grafana 前缀的原始路径，所以用 handle 而不是 handle_path。
+		@grafana path /grafana /grafana/*
+		handle @grafana {
+			reverse_proxy teslamate-grafana:3000 {
+				header_up X-WEBAUTH-USER admin
+			}
 		}
+
 		# 开了换肤时上游是「teslamate-theme:8080 teslamate:4000」：平时走换肤代理，
 		# 它没起来或连不上时，当次请求改走 teslamate 本体（原版界面），10 秒后再试换肤代理。
 		# 只有一个上游时 fail_duration 写成 0（关掉被动健康检查），免得 TeslaMate 重启后多等一阵 503
-		reverse_proxy __UPSTREAMS__ {
-			lb_policy first
-			lb_try_duration 5s
-			fail_duration __FAIL_DURATION__
+		handle {
+			reverse_proxy __UPSTREAMS__ {
+				lb_policy first
+				lb_try_duration 5s
+				fail_duration __FAIL_DURATION__
+			}
+		}
+	}
+
+	# 没登录：不管访问哪个地址都原地返回登录页（401），登录成功后页面刷新一下就进去了。
+	# 页面是写死在这里的，不依赖任何容器。里面的 CSS / JS 别用反引号，也别写成「花括号包一个单词」
+	# 的样子（Caddy 会当成占位符替换掉）。
+	handle {
+		header Content-Type "text/html; charset=utf-8"
+		header Cache-Control no-store
+		header X-Frame-Options DENY
+		respond `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f2f3f5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b0c0e" media="(prefers-color-scheme: dark)">
+<meta name="robots" content="noindex">
+<title>登录 · TeslaMate</title>
+<style>
+:root { color-scheme: light dark; --bg: #f2f3f5; --card: #fff; --text: #111318; --hint: #676d7a; --line: rgba(17, 24, 39, .14); --line-hover: #8e939d; --accent: #3059c9; --fill: #3059c9; --fill-hover: #2a4fb5; --soft: rgba(48, 89, 201, .11); --red: #b91c1c; --shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 6px 20px rgba(16, 24, 40, .06); }
+@media (prefers-color-scheme: dark) { :root { --bg: #0b0c0e; --card: #16181c; --text: #f2f3f5; --hint: #8b919d; --line: rgba(255, 255, 255, .13); --line-hover: #6d7380; --accent: #6f8fff; --fill: #3d5fd9; --fill-hover: #3656cc; --soft: rgba(111, 143, 255, .16); --red: #ff6b6b; --shadow: 0 0 0 1px rgba(255, 255, 255, .05); } }
+* { box-sizing: border-box; }
+html { background: var(--bg); -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { margin: 0; min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 24px 16px calc(24px + env(safe-area-inset-bottom)); background: var(--bg); color: var(--hint); font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+form { width: 100%; max-width: 360px; margin-bottom: 6vh; padding: 32px 24px 26px; border-radius: 22px; background: var(--card); box-shadow: var(--shadow); }
+.icon { display: flex; align-items: center; justify-content: center; width: 56px; height: 56px; margin: 0 auto 18px; border-radius: 18px; background: var(--soft); color: var(--accent); }
+h1 { margin: 0; color: var(--text); font-size: 22px; font-weight: 700; text-align: center; }
+.sub { margin: 6px 0 24px; font-size: 14px; text-align: center; }
+label { display: block; margin: 0 0 6px; color: var(--text); font-size: 14.5px; font-weight: 600; }
+input { display: block; width: 100%; height: 46px; margin: 0 0 16px; padding: 0 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text); font: inherit; font-size: 16px; transition: border-color .15s, box-shadow .15s; }
+input:hover { border-color: var(--line-hover); }
+input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--soft); outline: none; }
+.err { margin: -4px 0 14px; color: var(--red); font-size: 14px; }
+.err:empty { display: none; }
+button { width: 100%; height: 48px; margin-top: 4px; border: 0; border-radius: 12px; background: var(--fill); color: #fff; font: inherit; font-size: 16px; font-weight: 600; cursor: pointer; transition: background-color .15s; }
+button:hover { background: var(--fill-hover); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:disabled { opacity: .7; cursor: progress; }
+noscript p { margin: 16px 0 0; color: var(--red); font-size: 14px; text-align: center; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<form id="login">
+<div class="icon" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10.5" width="16" height="10.5" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg></div>
+<h1>TeslaMate</h1>
+<p class="sub">登录一次，这台设备就会记住</p>
+<label for="user">用户名</label>
+<input id="user" name="username" value="__AUTH_USER__" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" required>
+<label for="pass">密码</label>
+<input id="pass" name="password" type="password" autocomplete="current-password" autofocus required>
+<p id="err" class="err" role="alert"></p>
+<button id="go" type="submit">登录</button>
+<noscript><p>需要开启 JavaScript 才能登录</p></noscript>
+</form>
+<script>
+(function () {
+  var form = document.getElementById("login");
+  var user = document.getElementById("user");
+  var pass = document.getElementById("pass");
+  var go = document.getElementById("go");
+  var err = document.getElementById("err");
+
+  // Basic 认证头要的是 UTF-8 字节的 base64，btoa 只认单字节字符，中文密码得先转一下
+  function base64(text) {
+    var bytes = new TextEncoder().encode(text), bin = "";
+    for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
+  }
+
+  function fail(msg) {
+    err.textContent = msg;
+    go.disabled = false;
+    go.textContent = "登录";
+    pass.focus();
+    pass.select();
+  }
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    if (go.disabled) return;
+    err.textContent = "";
+    go.disabled = true;
+    go.textContent = "正在登录…";
+    fetch("/_auth/verify", {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { Authorization: "Basic " + base64(user.value.trim() + ":" + pass.value) }
+    }).then(function (res) {
+      if (res.ok) location.reload();
+      else if (res.status === 401) fail("用户名或密码不对");
+      else fail("登录失败（HTTP " + res.status + "），稍后再试");
+    }, function () {
+      fail("连不上服务器，检查网络后再试");
+    });
+  });
+})();
+</script>
+</body>
+</html>
+` 401
+	}
+
+	# 密码错时 basic_auth 会带上 WWW-Authenticate 头，浏览器见到它就弹原生的用户名密码框。
+	# 登录页自己会提示「密码不对」，把这个头去掉
+	handle_errors {
+		@verify path /_auth/verify
+		handle @verify {
+			header -WWW-Authenticate
+			header Cache-Control no-store
+			respond 401
 		}
 	}
 

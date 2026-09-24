@@ -3,7 +3,7 @@
 把 [TeslaMate](https://github.com/teslamate-org/teslamate)（自托管的特斯拉数据记录器）一键部署到一台**已经有 Caddy 容器占着 80/443** 的服务器上。
 
 - 不占任何宿主端口：TeslaMate 和 Grafana 接入 Caddy 所在的 docker 网络，由 Caddy 反代并自动签 HTTPS 证书。
-- 同一个域名：`https://你的域名/` 是 TeslaMate（前面加了一层密码），`https://你的域名/grafana` 是 Grafana（自带登录）。
+- 同一个域名：`https://你的域名/` 是 TeslaMate，`https://你的域名/grafana` 是 Grafana，两边共用一个登录页。每台设备登录一次就会记住，不用每次输密码，进 Grafana 也不用再登录。
 - 改 Caddyfile 前自动备份，校验或 reload 失败自动回滚，不影响 Caddy 上已有的站点。
 - 所有密钥首次运行时随机生成，保存在服务器本地的 `.env`，不进仓库。
 
@@ -32,7 +32,7 @@ cd /root/teslamate
 TM_DOMAIN=tm.example.com bash deploy/deploy.sh
 ```
 
-域名会记进 `.env`，以后直接 `bash deploy/deploy.sh` 即可。运行结束会打印网页登录密码，**只显示这一次**；Grafana 的 admin 密码在 `.env` 的 `TM_GRAFANA_PW`。
+域名会记进 `.env`，以后直接 `bash deploy/deploy.sh` 即可。运行结束会打印网页登录密码，**只显示这一次**。Grafana 不用单独登录（它自己的 admin 密码在 `.env` 的 `TM_GRAFANA_PW`，平时用不到）。
 
 **3. 连上车**
 
@@ -46,10 +46,21 @@ TM_DOMAIN=tm.example.com bash deploy/deploy.sh
 cd /root/teslamate
 git pull && bash deploy/deploy.sh                 # 升级（同时拉最新镜像）
 bash deploy/deploy.sh --backup                    # 备份数据库到 backups/
-TM_WEB_PASSWORD='新密码' bash deploy/deploy.sh     # 重置网页登录密码
+TM_WEB_PASSWORD='新密码' bash deploy/deploy.sh     # 重置网页登录密码（所有设备都要重新登录）
 bash deploy/deploy.sh --rollback                  # 下线并移除 Caddy 站点块（数据卷保留）
 docker logs -f teslamate                          # 看日志
 ```
+
+## 登录
+
+TeslaMate 本身没有登录，谁打开网址都能看到车的实时位置，所以 Caddy 在前面加了一道密码：
+
+- 打开网站先看到登录页。登录一次，这台设备就会记住（浏览器保存一个 400 天的 cookie，每次打开页面自动续期，常用的设备就一直不用再输）。
+- Grafana 在同一道登录后面：登录过的设备点「控制台」里的面板直接进，不再要 Grafana 的密码。
+- 退出当前设备：打开 `https://你的域名/_auth/logout`。
+- 手机丢了、或者在别人电脑上登录过：重置密码，所有设备都会退出。
+
+验证全在 Caddy 里完成，不依赖换肤代理，换肤代理挂了也不会绕过登录。
 
 ## 网页换肤（默认开启）
 

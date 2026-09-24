@@ -77,11 +77,22 @@ services:
       - DATABASE_PASS=${TM_DB_PASS:?未设置 TM_DB_PASS}
       - DATABASE_NAME=teslamate
       - DATABASE_HOST=teslamate-db
-      # 管理员密码只在 Grafana 第一次初始化时生效，之后改 .env 没用，要去 Grafana 里改
+      # 管理员密码只在 Grafana 第一次初始化时生效，之后改 .env 没用，要去 Grafana 里改。
+      # 平时经 Caddy 访问用不到它（见下面的 auth proxy）
       - GRAFANA_PASSWD=${TM_GRAFANA_PW:?未设置 TM_GRAFANA_PW}
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=${TM_GRAFANA_PW:?未设置 TM_GRAFANA_PW}
       - GF_AUTH_ANONYMOUS_ENABLED=false
+      # 和 TeslaMate 共用 Caddy 那一道登录（auth proxy）：Caddy 验过 cookie 才转发过来，
+      # 并在 X-WEBAUTH-USER 头里写上 admin，Grafana 认这个头直接登录，不再单独要密码。
+      # 同一 docker 网络里的其他容器（matrix 那套）能绕过 Caddy、伪造这个头直连 Grafana。
+      # 它们本来就能不经密码直连 teslamate:4000，这里和那边一样，默认它们可信
+      - GF_AUTH_PROXY_ENABLED=true
+      - GF_AUTH_PROXY_HEADER_NAME=X-WEBAUTH-USER
+      - GF_AUTH_PROXY_HEADER_PROPERTY=username
+      - GF_AUTH_PROXY_AUTO_SIGN_UP=false
+      # 在 Grafana 里「退出」没有意义（下个请求又被自动登录），把菜单藏掉；要退出去 /_auth/logout
+      - GF_AUTH_DISABLE_SIGNOUT_MENU=true
       # 挂在同域名的 /grafana 子路径下，Caddy 那边用 handle（不剥前缀）转发
       - GF_SERVER_DOMAIN=${TM_DOMAIN:?未设置 TM_DOMAIN}
       - GF_SERVER_ROOT_URL=https://%(domain)s/grafana

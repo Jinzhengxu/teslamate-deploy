@@ -12,7 +12,7 @@
 # 用法（在服务器上，以 root）：
 #   TM_DOMAIN=tm.example.com bash deploy/deploy.sh  首次部署（域名会记进 .env，之后不用再给）
 #   bash deploy/deploy.sh                          部署 / 升级
-#   TM_WEB_PASSWORD='新密码' bash deploy/deploy.sh    部署并设置（或重置）网页登录密码
+#   TM_WEB_PASSWORD='新密码' bash deploy/deploy.sh    部署并设置（或重置）网页登录密码，所有设备都要重新登录
 #   bash deploy/deploy.sh --backup                 备份数据库到 backups/
 #   bash deploy/deploy.sh --rollback               下线容器并从 Caddyfile 移除站点块（数据卷保留）
 #
@@ -216,11 +216,13 @@ update_caddyfile() {
   strip_block_to "$new"
   if [[ "$mode" == "add" ]]; then
     printf '\n' >> "$new"
-    # bcrypt 哈希只含 [./A-Za-z0-9$]，不会撞上 sed 的 | 分隔符和 & \ 这类特殊字符
+    # bcrypt 哈希只含 [./A-Za-z0-9$]、登录凭证是十六进制、用户名在前置检查里限制过字符，
+    # 都不会撞上 sed 的 | 分隔符和 & \ 这类特殊字符
     sed -e "s|__DOMAIN__|${DOMAIN}|g" \
         -e "s|__BASIC_AUTH__|${BASIC_AUTH_DIRECTIVE}|g" \
         -e "s|__AUTH_USER__|${WEB_USER}|g" \
         -e "s|__AUTH_HASH__|${TM_WEB_HASH}|g" \
+        -e "s|__AUTH_TOKEN__|${TM_WEB_TOKEN}|g" \
         -e "s|__UPSTREAMS__|${UPSTREAMS}|g" \
         -e "s|__FAIL_DURATION__|${FAIL_DURATION}|g" \
         "$SITE_SNIPPET" >> "$new"
@@ -268,6 +270,8 @@ check_prereq() {
   docker compose version >/dev/null 2>&1 || die "找不到 docker compose 插件（v2）"
   [[ -f "$PROJECT_DIR/docker-compose.yml" ]] || die "在 $PROJECT_DIR 下找不到 docker-compose.yml"
   [[ -f "$SITE_SNIPPET" ]] || die "找不到站点片段 $SITE_SNIPPET"
+  # 用户名会原样写进 Caddyfile 和登录页，只允许不需要转义的字符
+  [[ "$WEB_USER" =~ ^[A-Za-z0-9._@-]+$ ]] || die "TM_WEB_USER 只能用字母、数字和 . _ @ -（现在是「$WEB_USER」）"
   case "$THEME" in
     on|off) ;;
     *) die "TM_THEME 只能是 on 或 off（现在是「$THEME」）" ;;
@@ -369,6 +373,11 @@ prepare_env() {
     ok "已设置网页登录密码（用户名 $WEB_USER）"
   else
     ok "复用已有网页登录密码"
+  fi
+  # 登录凭证：登录成功后发给浏览器的长期 cookie 的值。换了密码就跟着换，所有设备都得重新登录
+  if [[ -n "$NEW_WEB_PASSWORD" || -z "${TM_WEB_TOKEN:-}" ]]; then
+    TM_WEB_TOKEN="$(rand_hex 32)"; env_set TM_WEB_TOKEN "$TM_WEB_TOKEN"
+    ok "已生成登录凭证（之前登录过的设备需要重新登录一次）"
   fi
   env_set TM_WEB_USER "$WEB_USER"
   env_set TM_THEME "$THEME"
@@ -475,6 +484,12 @@ check_theme() {
   warn "换肤代理没有按预期工作（上面是它的报错），本次先不用它，网页为原版界面"
 }
 
+# 从本机经 Caddy 访问站点（不经过 DNS 和 Cloudflare）。$1 是路径，其余参数原样交给 curl
+site_curl() {
+  local path="$1"; shift
+  curl -sk --max-time 15 --resolve "$DOMAIN:443:127.0.0.1" "$@" "https://$DOMAIN$path"
+}
+
 final_check() {
   step "最终自检"
   command -v curl >/dev/null 2>&1 || { warn "宿主没有 curl，跳过"; return 0; }
@@ -486,12 +501,49 @@ final_check() {
     *) warn "本机 HTTP 返回 ${code:-无响应}，预期是 308 跳转" ;;
   esac
 
-  code="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 10 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/" || true)"
+  code="$(site_curl / -o /dev/null -w '%{http_code}' || true)"
   case "$code" in
-    401) ok "https://$DOMAIN/ → 401，密码保护生效，证书也已就绪" ;;
-    000) warn "HTTPS 暂时握手失败：多半是证书还没签下来（DNS 还没配或还没生效），见下方说明" ;;
-    *)   warn "https://$DOMAIN/ 返回 $code（预期 401）" ;;
+    401) ok "https://$DOMAIN/ → 401 登录页，密码保护生效，证书也已就绪" ;;
+    000) warn "HTTPS 暂时握手失败：多半是证书还没签下来（DNS 还没配或还没生效），见下方说明"; return 0 ;;
+    *)   warn "https://$DOMAIN/ 返回 $code（预期 401 登录页）"; return 0 ;;
   esac
+  code="$(site_curl /grafana/ -o /dev/null -w '%{http_code}' || true)"
+  [[ "$code" == 401 ]] && ok "Grafana 也在同一道登录后面" \
+    || warn "没登录时 https://$DOMAIN/grafana/ 返回 $code（预期 401）"
+
+  # 下面要带上密码或登录凭证去请求，写进请求头文件再交给 curl，不出现在进程列表里
+  local hdr="$WORK_DIR/auth.hdr" headers
+  # 刚设置了密码就顺带走一遍登录页的流程：密码对了应该拿到 204
+  if [[ -n "$NEW_WEB_PASSWORD" ]]; then
+    printf 'Authorization: Basic %s\n' "$(printf '%s' "$WEB_USER:$NEW_WEB_PASSWORD" | base64 | tr -d '\n')" > "$hdr"
+    code="$(site_curl /_auth/verify -X POST -H "@$hdr" -o /dev/null -w '%{http_code}' || true)"
+    [[ "$code" == 204 ]] && ok "用新密码登录成功" || warn "用新密码登录返回 $code（预期 204）"
+  fi
+  # 密码错时不该带 WWW-Authenticate，否则浏览器会在登录页上面再弹一个原生登录框
+  headers="$(site_curl /_auth/verify -X POST -u "x:x" -o /dev/null -D - || true)"
+  if [[ "${headers,,}" == *"www-authenticate"* ]]; then
+    warn "密码输错时浏览器会多弹一个原生登录框（这个 Caddy 版本去不掉那个响应头），不影响登录"
+  fi
+
+  # 带上登录凭证，相当于一个已经登录过的浏览器
+  printf 'Cookie: tm_auth=%s\n' "$TM_WEB_TOKEN" > "$hdr"
+  code="$(site_curl / -H "@$hdr" -o /dev/null -w '%{http_code}' || true)"
+  case "$code" in
+    200|302) ok "登录后能打开 TeslaMate" ;;
+    *)       warn "登录后打开 TeslaMate 返回 $code（预期 200 或 302）" ;;
+  esac
+  # Grafana 刚因为配置变化重建过的话要等它起来，最多等 30 秒
+  local body=""
+  for _ in $(seq 1 10); do
+    body="$(site_curl /grafana/api/user -H "@$hdr" || true)"
+    [[ "$body" == *'"login":"admin"'* ]] && break
+    sleep 3
+  done
+  if [[ "$body" == *'"login":"admin"'* ]]; then
+    ok "Grafana 免密生效：登录后直接是 admin"
+  else
+    warn "Grafana 没有自动登录（可能还没启动完）。稍后打开 https://$DOMAIN/grafana 看看，不行就看 docker logs teslamate-grafana"
+  fi
 }
 
 # ------------------------------------------------------------------ 分时电价
@@ -734,7 +786,7 @@ ${C_BOLD}1) Cloudflare DNS（还没加的话）${C_RESET}
    拿到正式证书后，想切橙云就和 poker 一样：切橙云 + SSL/TLS 模式 Full。
    ${C_DIM}（自用服务一直保持灰云也完全可以，证书续期最省心。）${C_RESET}
 
-${C_BOLD}2) 登录信息${C_RESET}
+${C_BOLD}2) 登录信息${C_RESET}   ${C_DIM}TeslaMate 和 Grafana 共用，每台设备登录一次就会记住${C_RESET}
      TeslaMate   https://${DOMAIN}/
 EOF
   if [[ -n "$NEW_WEB_PASSWORD" ]]; then
@@ -744,8 +796,8 @@ EOF
     printf '                 用户名 %s   密码沿用上次（忘了就：TM_WEB_PASSWORD=新密码 bash deploy/deploy.sh）\n' "$WEB_USER"
   fi
   cat <<EOF
-     Grafana     https://${DOMAIN}/grafana
-                 用户名 admin   密码见 ${ENV_FILE} 里的 TM_GRAFANA_PW
+     Grafana     https://${DOMAIN}/grafana   ${C_DIM}登录后直接进，不用再输密码${C_RESET}
+     退出登录    https://${DOMAIN}/_auth/logout   ${C_DIM}只退出当前设备；重置密码会让所有设备都退出${C_RESET}
 
 ${C_BOLD}3) 连上你的车${C_RESET}
    在自己电脑上运行 tesla_auth 拿到 Access Token / Refresh Token，
