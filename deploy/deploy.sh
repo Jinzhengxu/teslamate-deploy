@@ -544,6 +544,16 @@ final_check() {
   else
     warn "Grafana 没有自动登录（可能还没启动完）。稍后打开 https://$DOMAIN/grafana 看看，不行就看 docker logs teslamate-grafana"
   fi
+
+  # 统计页由换肤代理提供（deploy/theme/assets/stats/），换肤关着或没生效时就没有
+  if [[ "$THEME_STATUS" == on ]]; then
+    body="$(site_curl /stats/ -H "@$hdr" || true)"
+    if [[ "$body" == *'/stats/app.js'* ]]; then
+      ok "统计页可以打开：https://$DOMAIN/stats/"
+    else
+      warn "统计页 https://$DOMAIN/stats/ 没有正常返回，看看 docker logs teslamate-theme"
+    fi
+  fi
 }
 
 # ------------------------------------------------------------------ 分时电价
@@ -796,6 +806,7 @@ EOF
     printf '                 用户名 %s   密码沿用上次（忘了就：TM_WEB_PASSWORD=新密码 bash deploy/deploy.sh）\n' "$WEB_USER"
   fi
   cat <<EOF
+     统计        https://${DOMAIN}/stats/    ${C_DIM}行程、充电、电池等统计图表（换肤开着时才有）${C_RESET}
      Grafana     https://${DOMAIN}/grafana   ${C_DIM}登录后直接进，不用再输密码${C_RESET}
      退出登录    https://${DOMAIN}/_auth/logout   ${C_DIM}只退出当前设备；重置密码会让所有设备都退出${C_RESET}
 

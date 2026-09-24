@@ -3,7 +3,8 @@
 把 [TeslaMate](https://github.com/teslamate-org/teslamate)（自托管的特斯拉数据记录器）一键部署到一台**已经有 Caddy 容器占着 80/443** 的服务器上。
 
 - 不占任何宿主端口：TeslaMate 和 Grafana 接入 Caddy 所在的 docker 网络，由 Caddy 反代并自动签 HTTPS 证书。
-- 同一个域名：`https://你的域名/` 是 TeslaMate，`https://你的域名/grafana` 是 Grafana，两边共用一个登录页。每台设备登录一次就会记住，不用每次输密码，进 Grafana 也不用再登录。
+- 同一个域名：`https://你的域名/` 是 TeslaMate，`https://你的域名/stats/` 是统计图表，`https://你的域名/grafana` 是 Grafana，共用一个登录页。每台设备登录一次就会记住，不用每次输密码，进 Grafana 也不用再登录。
+- 自带一套和换肤同风格的中文统计页（行程、充电、电池健康、按月汇总等 17 页），手机上看比 Grafana 顺手；Grafana 原版面板照样能打开。
 - 改 Caddyfile 前自动备份，校验或 reload 失败自动回滚，不影响 Caddy 上已有的站点。
 - 所有密钥首次运行时随机生成，保存在服务器本地的 `.env`，不进仓库。
 
@@ -56,7 +57,7 @@ docker logs -f teslamate                          # 看日志
 TeslaMate 本身没有登录，谁打开网址都能看到车的实时位置，所以 Caddy 在前面加了一道密码：
 
 - 打开网站先看到登录页。登录一次，这台设备就会记住（浏览器保存一个 400 天的 cookie，每次打开页面自动续期，常用的设备就一直不用再输）。
-- Grafana 在同一道登录后面：登录过的设备点「控制台」里的面板直接进，不再要 Grafana 的密码。
+- Grafana 在同一道登录后面：登录过的设备直接进，不再要 Grafana 的密码。
 - 退出当前设备：打开 `https://你的域名/_auth/logout`。
 - 手机丢了、或者在别人电脑上登录过：重置密码，所有设备都会退出。
 
@@ -66,7 +67,7 @@ TeslaMate 本身没有登录，谁打开网址都能看到车的实时位置，�
 
 TeslaMate 自带的网页比较朴素。这里在 Caddy 和 TeslaMate 之间夹了一个很小的 nginx（`teslamate-theme`，约 5MB 内存），给每个页面加一份新样式，TeslaMate 本身一行不改，升级镜像照常：
 
-- 手机优先：底部标签栏（主页 / 控制台 / 收藏点 / 设置），「控制台」点开是一个 Grafana 面板列表；输入框不小于 16px，iPhone 上点输入框不会自动放大页面。
+- 手机优先：底部标签栏（主页 / 统计 / 收藏点 / 设置），原来列 Grafana 面板的「控制台」换成了「统计」（见下一节）；输入框不小于 16px，iPhone 上点输入框不会自动放大页面。
 - 首页车辆卡片：状态胶囊（充电绿、行驶蓝、正在休眠琥珀），大号电量加电量条（带充电上限刻度），「100% 时续航」直接显示，其余数据排成两列（桌面三列）小卡片；没锁车、车门车窗开着、胎压低这类图标标成琥珀色。
 - 设置页改成 iOS 那种分组列表；收藏点列表整行可点、编辑页地图顶满卡片；充电费用、登录页统一成卡片式。
 - 亮 / 暗两套配色跟随 TeslaMate「设置 → 主题」，文字对比度按 WCAG AA 调过。
@@ -78,6 +79,22 @@ TeslaMate 自带的网页比较朴素。这里在 Caddy 和 TeslaMate 之间夹�
 TM_THEME=off bash deploy/deploy.sh    # 关掉，恢复原版界面
 TM_THEME=on bash deploy/deploy.sh     # 重新打开
 ```
+
+## 统计页
+
+导航里的「统计」（`https://你的域名/stats/`）：把 Grafana 里的面板重新做成了和换肤同风格的中文页面，手机优先，亮 / 暗跟随 TeslaMate 的主题设置。
+
+| 分组 | 页面 |
+|---|---|
+| 行程与充电 | 行程（每次的轨迹地图，速度、功率、电量、海拔、温度、胎压曲线）、充电（功率曲线、费用，可直接改费用）、旅程、时间线 |
+| 统计分析 | 按月汇总（可切换天 / 周 / 月 / 年）、驾驶统计、能耗、充电统计 |
+| 车辆与电池 | 电池健康、电量和里程、续航变化、待机掉电、状态、软件更新 |
+| 地图与地点 | 足迹、地点 |
+
+- 数据直接查 Grafana 里的 TeslaMate 数据源，SQL 改编自对应的 Grafana 面板，数字和 Grafana 一致。不加任何服务，不多占内存。
+- 地图用高德底图（国内打开快），坐标自动纠偏。这是页面唯一的外部请求；图表库（ECharts）和地图库（Leaflet）都放在自己服务器上。
+- 每个页面右上角「⋯」可以跳到对应的 Grafana 原版面板；统计首页最下面列着全部 Grafana 面板。
+- 页面由换肤代理提供（[deploy/theme/assets/stats/](deploy/theme/assets/stats/)）。`TM_THEME=off` 时统计页一起关掉，导航恢复成原来的「控制台」。
 
 ## 分时电价（可选）
 
@@ -122,3 +139,4 @@ TM_TOU_PRICES='23:00-07:00=0.3,07:00-23:00=0.6' bash deploy/deploy.sh --tou
 
 - `.env` 里的 `TM_ENCRYPTION_KEY` 和 `TM_DB_PASS` 生成后**不要改**，改了已保存的 token 解不开、数据库连不上。
 - 特斯拉正在逐个账号关闭 TeslaMate 依赖的非官方 Owner API。如果 token 有效却一直拿不到数据，需要改用官方 Fleet API，见 [TeslaMate 文档](https://docs.teslamate.org/docs/configuration/api/)。
+- 统计页的 SQL 跟着 TeslaMate 的数据库结构走。以后 TeslaMate 升级如果改了表结构，个别统计页可能会报「查询出错」，这时 Grafana 原版面板（随 TeslaMate 一起升级）还能看，等这里跟进修好即可。

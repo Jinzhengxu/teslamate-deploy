@@ -1,0 +1,16 @@
+/* 电量和里程页（pages/levels.js）专用样式。图例表和续航变化页共用，在 _series.css */
+@import url("_series.css");
+
+/* 图表上方一行：参考线说明 + 分位带开关 */
+.pg-levels-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 8px;
+}
+
+.pg-levels-note {
+  margin-top: 10px;
+}

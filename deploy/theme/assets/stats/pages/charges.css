@@ -1,0 +1,97 @@
+/* 充电列表页（/stats/charges）专用样式。只用 stats.css 的设计变量，亮暗自动适配。
+   布局（.tm-list-layout）、筛选条（ui.filterBar / .tm-field / .tm-search）、柱状图标题（.tm-chart-head）、
+   按天分组（ui.dayGroup）和「再显示」（ui.pager）都是核心的，和行程列表同一套；这里只剩充电页自己的东西。
+   页面样式离开后还留在 <head> 里，所以类名都带 pg-charges- 前缀，碰公共类时挂在页面根 .pg-charges 下面 */
+
+/* ---------------------------------------------------------------- 筛选面板 */
+
+/* 分段选择按内容宽，不撑满一行（和旁边的收藏点 chip 一样靠左） */
+.pg-charges .tm-field > .tm-seg {
+  justify-self: start;
+}
+
+/* 费用：「不限 / 有费用 / 未计费」+「不低于 ¥ [  ]」，放不下时输入框折到下一行 */
+.pg-charges-cost {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.pg-charges-min {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--tm-text-2);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.pg-charges-min .tm-input {
+  width: 92px;
+  height: 36px;
+}
+
+@media screen and (min-width: 769px) {
+  .pg-charges .tm-search {
+    max-width: 420px;
+  }
+}
+
+/* ---------------------------------------------------------------- 正在充电 / 未完成的充电 */
+
+.pg-charges-live {
+  border-color: var(--tm-green-soft);
+}
+
+.pg-charges-incomplete {
+  border-color: var(--tm-amber-soft);
+}
+
+.pg-charges-incomplete-note {
+  margin: 0;
+  padding: 0 4px;
+}
+
+.pg-charges-incomplete-note a {
+  color: var(--tm-accent);
+}
+
+/* ---------------------------------------------------------------- 表格视图
+   表头「续航增加 km」这类带单位的可以折成两行，格子左右留白收窄、地点列窄一点，
+   15 列在桌面 1100 宽的内容区里刚好放下，不用横着滚（平板上还是要滚） */
+@media screen and (min-width: 769px) {
+  .pg-charges .tm-table th {
+    vertical-align: bottom;
+    white-space: normal;
+    word-break: keep-all;
+  }
+
+  .pg-charges .tm-table.is-dense th,
+  .pg-charges .tm-table.is-dense td {
+    padding-right: 6px;
+    padding-left: 6px;
+  }
+
+  .pg-charges .tm-table.is-dense th:first-child,
+  .pg-charges .tm-table.is-dense td:first-child {
+    padding-left: 14px;
+  }
+
+  .pg-charges .tm-table.is-dense th:last-child,
+  .pg-charges .tm-table.is-dense td:last-child {
+    padding-right: 14px;
+  }
+
+  .pg-charges .tm-table .is-wrap {
+    min-width: 120px;
+  }
+}
+
+/* 「按天 / 表格」放在小标题右边，比筛选里的分段选择小一号 */
+.pg-charges .tm-section-head .tm-seg button {
+  min-height: 28px;
+  padding: 0 11px;
+  font-size: 13px;
+}

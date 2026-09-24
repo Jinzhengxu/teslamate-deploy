@@ -1,0 +1,252 @@
+/* 能耗（pages/efficiency.js）专用样式。颜色只用设计变量，亮暗自动适配 */
+
+/* 宫格小字（毛耗电总量 kWh 等）在 320 宽时会被省略号截掉，窄屏上允许换行 */
+@media screen and (max-width: 374px) {
+  .pg-eff-stats .tm-stat-sub {
+    white-space: normal;
+  }
+}
+
+/* 最短行程距离筛选：标签 + 分段选择，窄屏时分段选择换到下一行 */
+.pg-eff-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-bottom: 14px;
+}
+
+.pg-eff-filter-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* 图下面参考虚线的说明，前面画一小段虚线当图例 */
+.pg-eff-ref {
+  margin-top: 6px;
+}
+
+.pg-eff-ref i {
+  display: inline-block;
+  width: 18px;
+  margin-right: 6px;
+  border-top: 1.5px dashed var(--tm-text-2);
+  vertical-align: middle;
+}
+
+/* 气温表：手机上也保持表格（11 行左右，变成卡片会太长），列少一点、字小一点 */
+.pg-eff-table-wrap {
+  margin: 14px -16px -16px;
+  border-top: 1px solid var(--tm-line);
+}
+
+.pg-eff-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--tm-text);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pg-eff-table th,
+.pg-eff-table td {
+  padding: 9px 8px;
+  border-bottom: 1px solid var(--tm-line);
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.pg-eff-table tr > :first-child {
+  padding-left: 16px;
+}
+
+.pg-eff-table tr > :last-child {
+  padding-right: 16px;
+}
+
+.pg-eff-table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+.pg-eff-table thead th {
+  color: var(--tm-text-hint);
+  font-size: 12.5px;
+  font-weight: 600;
+  vertical-align: bottom;
+}
+
+.pg-eff-table thead small {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.pg-eff-table tbody th {
+  font-weight: 600;
+}
+
+.pg-eff-table .is-right {
+  text-align: right;
+}
+
+.pg-eff-table td small {
+  display: block;
+  color: var(--tm-text-hint);
+  font-size: 11.5px;
+}
+
+/* 驾驶效率：进度条 + 百分数 */
+.pg-eff-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 96px;
+}
+
+.pg-eff-bar .tm-bar {
+  flex: 1;
+  min-width: 36px;
+}
+
+.pg-eff-bar > span {
+  flex: none;
+  min-width: 44px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: right;
+}
+
+/* 宽屏：均速单独一列；窄屏：均速写在里程下面 */
+.pg-eff-narrow {
+  display: none !important;
+}
+
+@media screen and (max-width: 600px) {
+  .pg-eff-wide {
+    display: none !important;
+  }
+
+  .pg-eff-narrow {
+    display: block !important;
+  }
+
+  .pg-eff-table {
+    font-size: 13.5px;
+  }
+
+  .pg-eff-table th,
+  .pg-eff-table td {
+    padding: 8px 6px;
+  }
+
+  .pg-eff-bar {
+    min-width: 0;
+    gap: 6px;
+  }
+
+  .pg-eff-bar .tm-bar {
+    min-width: 24px;
+  }
+}
+
+@media screen and (min-width: 769px) {
+  .pg-eff-table-wrap {
+    margin: 16px -20px -20px;
+  }
+
+  .pg-eff-table tr > :first-child {
+    padding-left: 20px;
+  }
+
+  .pg-eff-table tr > :last-child {
+    padding-right: 20px;
+  }
+
+  .pg-eff-table th,
+  .pg-eff-table td {
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+}
+
+/* 进阶折叠区：用原生 details，键盘和读屏都不用额外处理 */
+.pg-eff-adv {
+  overflow: hidden;
+}
+
+.pg-eff-adv > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+  padding: 0 16px;
+  color: var(--tm-text);
+  font-size: 15px;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+}
+
+.pg-eff-adv > summary::-webkit-details-marker {
+  display: none;
+}
+
+.pg-eff-adv > summary:hover {
+  background: var(--tm-surface-2);
+}
+
+.pg-eff-adv > summary:focus-visible {
+  outline: 2px solid var(--tm-accent);
+  outline-offset: -2px;
+}
+
+.pg-eff-adv-chevron {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--tm-text-3);
+  transition: transform 0.2s var(--tm-ease, ease);
+}
+
+.pg-eff-adv[open] .pg-eff-adv-chevron {
+  transform: rotate(180deg);
+}
+
+.pg-eff-adv-body {
+  display: grid;
+  gap: 14px;
+  padding: 0 16px 16px;
+}
+
+.pg-eff-derived {
+  min-width: 0;
+  padding: 12px 14px 4px;
+  border: 1px solid var(--tm-line);
+  border-radius: var(--tm-r-md);
+}
+
+.pg-eff-derived .tm-card-title {
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+@media screen and (min-width: 769px) {
+  .pg-eff-adv > summary {
+    padding: 0 20px;
+  }
+
+  .pg-eff-adv-body {
+    padding: 0 20px 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pg-eff-adv-chevron {
+    transition: none;
+  }
+}

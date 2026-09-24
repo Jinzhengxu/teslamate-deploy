@@ -1,0 +1,15 @@
+/* 行程列表（pages/drives.js）专用样式。只用 stats.css 的设计变量，亮暗自动适配。
+   布局、筛选条、按天分组、分页都用核心的 .tm-list-layout / ui.filterBar / ui.dayGroup / ui.pager，这里只剩「未完成的行程」 */
+
+.pg-drives-incomplete {
+  border-color: var(--tm-amber-soft);
+}
+
+.pg-drives-incomplete-note {
+  margin: 0;
+  padding: 0 4px;
+}
+
+.pg-drives-incomplete-note a {
+  color: var(--tm-accent);
+}

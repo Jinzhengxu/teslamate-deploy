@@ -1,0 +1,3 @@
+/* 续航变化页（pages/projected-range.js）专用样式。
+   时间粒度用 ui.segmented 的 prefix，图例表和电量和里程页共用，在 _series.css，这里没有别的了 */
+@import url("_series.css");

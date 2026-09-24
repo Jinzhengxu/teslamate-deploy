@@ -1,0 +1,82 @@
+/* 待机掉电（pages/vampire.js）专用样式。颜色只用设计变量，亮暗自动适配 */
+
+/* 最短停车时长筛选：它管整页，所以放在最上面、不包卡片 */
+.pg-vd-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 0 2px;
+}
+
+.pg-vd-filter-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.pg-vd-filter .tm-seg button {
+  padding: 0 12px;
+}
+
+/* 窄屏（320）上 7 个选项挤一挤也要放得下 */
+@media screen and (max-width: 374px) {
+  .pg-vd-filter .tm-seg button {
+    padding: 0 9px;
+  }
+}
+
+/* 「天冷不计续航」的说明 */
+.pg-vd-cold {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: -4px;
+  padding: 0 2px;
+}
+
+.pg-vd-cold .tm-svg {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin-top: 2px;
+  color: var(--tm-cyan);
+}
+
+.pg-vd-more {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.pg-vd-more .tm-note {
+  margin: 0;
+  text-align: center;
+}
+
+.pg-vd-end {
+  margin: 12px 0 0;
+  text-align: center;
+}
+
+/* 320 宽时宫格小字和列表第二行（停多久 · 休眠多少）会被省略号截掉，允许换行；两半各自不拆开 */
+@media screen and (max-width: 374px) {
+  .pg-vd-stats .tm-stat-sub,
+  .pg-vd-rows .tm-row-sub {
+    white-space: normal;
+  }
+}
+
+.pg-vd-nb {
+  white-space: nowrap;
+}
+
+/* 停车记录的容器是 section（grid）的子元素，不设 min-width 会被列表的最小内容宽度撑开，320 宽时横向溢出 */
+.pg-vd-rows {
+  display: grid;
+  min-width: 0;
+}

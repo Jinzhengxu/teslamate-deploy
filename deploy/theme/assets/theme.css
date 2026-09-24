@@ -263,8 +263,7 @@ html:not([data-theme="dark"]) .navbar .navbar-brand img {
   opacity: 0.88;
 }
 
-html .navbar.is-dark .navbar-item,
-html .navbar.is-dark .navbar-link {
+html .navbar.is-dark .navbar-item {
   color: var(--tm-text-2);
   font-weight: 500;
   font-size: 15px;
@@ -280,8 +279,7 @@ html .navbar .navbar-item .icon .mdi {
     gap: 4px;
   }
 
-  html .navbar.is-dark .navbar-end > .navbar-item,
-  html .navbar.is-dark .navbar-end > .navbar-item > .navbar-link {
+  html .navbar.is-dark .navbar-end > .navbar-item {
     height: 38px;
     padding: 0 14px 0 10px;
     border-radius: 999px;
@@ -289,25 +287,18 @@ html .navbar .navbar-item .icon .mdi {
     transition: background-color 0.15s, color 0.15s;
   }
 
-  html .navbar.is-dark .navbar-end > .navbar-item.has-dropdown {
-    padding: 0;
-  }
-
   /* 原版图标和文字之间有个 &nbsp;，它自己也是一个 flex 子项，gap 会在它两边各算一次，
      所以 gap 清零，间距放到图标上 */
-  html .navbar.is-dark .navbar-end > a.navbar-item,
-  html .navbar.is-dark .navbar-end > .navbar-item > .navbar-link {
+  html .navbar.is-dark .navbar-end > a.navbar-item {
     gap: 0;
     font-size: 0;
   }
 
-  html .navbar .navbar-end > .navbar-item > .icon,
-  html .navbar .navbar-end > .navbar-item > .navbar-link > .icon {
+  html .navbar .navbar-end > .navbar-item > .icon {
     margin-inline-end: 6px;
   }
 
-  html .navbar .navbar-end > .navbar-item > span:not(.icon),
-  html .navbar .navbar-end > .navbar-item > .navbar-link > span:not(.icon) {
+  html .navbar .navbar-end > .navbar-item > span:not(.icon) {
     font-size: 15px;
   }
 
@@ -315,8 +306,7 @@ html .navbar .navbar-item .icon .mdi {
     margin-right: 0 !important;
   }
 
-  html .navbar.is-dark .navbar-end > a.navbar-item:hover,
-  html .navbar.is-dark .navbar-end > .navbar-item.has-dropdown:hover > .navbar-link {
+  html .navbar.is-dark .navbar-end > a.navbar-item:hover {
     background: var(--tm-surface-3);
     color: var(--tm-text);
   }
@@ -330,59 +320,6 @@ html .navbar .navbar-item .icon .mdi {
   html .navbar .navbar-end > .tm-home {
     display: none !important;
   }
-
-  /* 19 个 Grafana 面板排成两列，一眼看全，不用滚动 */
-  html .navbar .navbar-dropdown.is-boxed {
-    top: calc(100% + 6px);
-    inset-inline-start: auto;
-    inset-inline-end: 0;
-    width: 460px;
-    columns: 2;
-    column-gap: 4px;
-    padding: 6px;
-    border: 1px solid var(--tm-line);
-    border-radius: var(--tm-r-md);
-    background: var(--tm-glass-strong);
-    -webkit-backdrop-filter: saturate(1.8) blur(20px);
-    backdrop-filter: saturate(1.8) blur(20px);
-    box-shadow: var(--tm-shadow-pop);
-  }
-
-  /* 鼠标从按钮移到下拉框时经过 6px 空隙，补一块透明区域让 :hover 不断开 */
-  /* 两列面板整体在按钮左边，鼠标斜着移向左列会先离开按钮；打开时把按钮左边这段也算进悬停区 */
-  html .navbar .navbar-item.has-dropdown.is-hoverable:hover::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    inset-inline-end: 100%;
-    width: calc(460px - 100%);
-    height: calc(100% + 8px);
-  }
-
-  html .navbar .navbar-item.has-dropdown.is-hoverable::after {
-    content: "";
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 100%;
-    height: 8px;
-  }
-}
-
-html .navbar .navbar-dropdown a.navbar-item {
-  padding: 9px 12px;
-  border-radius: var(--tm-r-sm);
-  /* Bulma 给每一行刷了不透明底色，会把毛玻璃面板盖成一块白板 */
-  background-color: transparent;
-  color: var(--tm-text);
-  font-size: 14.5px;
-  white-space: nowrap;
-  break-inside: avoid;
-}
-
-html .navbar .navbar-dropdown a.navbar-item:hover {
-  background: var(--tm-surface-3);
-  color: var(--tm-text);
 }
 
 /* ------------------------------------------------------------------ 手机 / 平板：底部标签栏 */
@@ -442,8 +379,7 @@ html .navbar .navbar-dropdown a.navbar-item:hover {
     margin: 0 auto;
   }
 
-  html .navbar.is-dark .navbar-end > a.navbar-item,
-  html .navbar.is-dark .navbar-end > .navbar-item.has-dropdown {
+  html .navbar.is-dark .navbar-end > a.navbar-item {
     flex: 1 1 0;
     min-width: 0;
     margin: 0 !important;
@@ -452,8 +388,7 @@ html .navbar .navbar-dropdown a.navbar-item:hover {
   }
 
   /* 原版在图标和文字之间塞了一个 &nbsp;，字号归零把它压掉，再给子元素单独设字号 */
-  html .navbar.is-dark .navbar-end > a.navbar-item,
-  html .navbar.is-dark .navbar-end > .navbar-item.has-dropdown > .navbar-link {
+  html .navbar.is-dark .navbar-end > a.navbar-item {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -467,13 +402,7 @@ html .navbar .navbar-dropdown a.navbar-item:hover {
     transition: color 0.15s;
   }
 
-  html .navbar.is-dark .navbar-end > .navbar-item.has-dropdown > .navbar-link {
-    cursor: pointer;
-    user-select: none;
-  }
-
-  html .navbar .navbar-end > .navbar-item > .icon,
-  html .navbar .navbar-end > .navbar-item > .navbar-link > .icon {
+  html .navbar .navbar-end > .navbar-item > .icon {
     width: 26px;
     height: 26px;
   }
@@ -482,8 +411,7 @@ html .navbar .navbar-dropdown a.navbar-item:hover {
     font-size: 23px;
   }
 
-  html .navbar .navbar-end > .navbar-item > span:not(.icon),
-  html .navbar .navbar-end > .navbar-item > .navbar-link > span:not(.icon) {
+  html .navbar .navbar-end > .navbar-item > span:not(.icon) {
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -494,18 +422,11 @@ html .navbar .navbar-dropdown a.navbar-item:hover {
     line-height: 1.2;
   }
 
-  html .navbar.is-dark .navbar-end > a.navbar-item.tm-active,
-  html .navbar.is-dark .navbar-end > .navbar-item.has-dropdown.tm-open > .navbar-link {
+  html .navbar.is-dark .navbar-end > a.navbar-item.tm-active {
     color: var(--tm-accent-hover);
   }
 
-  /* 面板打开时只让「控制台」高亮，当前页的标签先退回灰色 */
-  html.tm-sheet-open .navbar.is-dark .navbar-end > a.navbar-item.tm-active {
-    color: var(--tm-text-hint);
-  }
-
-  html .navbar.is-dark .navbar-end > a.navbar-item:active .icon,
-  html .navbar.is-dark .navbar-end > .navbar-item.has-dropdown > .navbar-link:active .icon {
+  html .navbar.is-dark .navbar-end > a.navbar-item:active .icon {
     transform: scale(0.9);
   }
 
@@ -513,83 +434,15 @@ html .navbar .navbar-dropdown a.navbar-item:hover {
     transition: transform 0.12s var(--tm-ease);
   }
 
-  /* 「控制台」下拉在手机上改成从底栏上方弹出的面板（theme.js 负责开关） */
-  html .navbar .navbar-item.has-dropdown .navbar-dropdown {
-    display: none !important;
-  }
-
-  html .navbar .navbar-item.has-dropdown.tm-open .navbar-dropdown {
-    display: block !important;
-    position: fixed;
-    left: max(10px, env(safe-area-inset-left));
-    right: max(10px, env(safe-area-inset-right));
-    bottom: calc(var(--tm-tabbar-h) + env(safe-area-inset-bottom) + 10px);
-    max-width: 540px;
-    max-height: min(62vh, 520px);
-    margin: 0 auto;
-    padding: 8px;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    border: 1px solid var(--tm-line);
-    border-radius: var(--tm-r-lg);
-    background: var(--tm-glass-strong);
-    -webkit-backdrop-filter: saturate(1.8) blur(24px);
-    backdrop-filter: saturate(1.8) blur(24px);
-    box-shadow: var(--tm-shadow-pop);
-    animation: tm-sheet-in 0.22s var(--tm-ease);
-  }
-
-  html .navbar .navbar-item.has-dropdown.tm-open .navbar-dropdown a.navbar-item {
-    display: block;
-    padding: 12px 14px;
-    font-size: 15.5px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  html .navbar .navbar-item.has-dropdown.tm-open .navbar-dropdown a.navbar-item + a.navbar-item {
-    border-top: 1px solid var(--tm-line);
-    border-radius: 0;
-  }
-
-  /* 面板打开时顶栏跟着一起压暗（顶栏和底栏在同一个层里，遮罩盖不到它） */
-  html.tm-sheet-open .navbar.is-dark::before {
-    box-shadow: inset 0 0 0 100vmax rgba(0, 0, 0, 0.32);
-    transition: box-shadow 0.2s ease;
-  }
-
-  html.tm-sheet-open .navbar.is-dark .navbar-brand {
-    filter: brightness(0.68);
-    transition: filter 0.2s ease;
-  }
-
-  /* 面板打开时的遮罩。z-index 比导航栏（401）低，底栏和面板仍在遮罩上面 */
-  html.tm-sheet-open body::after {
-    content: "";
-    position: fixed;
-    inset: 0;
-    z-index: 400;
-    background: rgba(0, 0, 0, 0.32);
-    animation: tm-fade-in 0.2s ease;
+  /* 原来列 Grafana 面板的「控制台」下拉由 theme.js 换成「统计」；万一脚本没跑，也别让它在底栏里摊开一长串 */
+  html .navbar .navbar-end > .navbar-item.has-dropdown {
+    display: none;
   }
 }
 
 @media screen and (max-width: 768px) {
   html .navbar.is-dark .navbar-brand > a.navbar-item {
     padding-left: 16px;
-  }
-}
-
-@keyframes tm-sheet-in {
-  from {
-    opacity: 0;
-    transform: translateY(12px) scale(0.98);
-  }
-}
-
-@keyframes tm-fade-in {
-  from {
-    opacity: 0;
   }
 }
 

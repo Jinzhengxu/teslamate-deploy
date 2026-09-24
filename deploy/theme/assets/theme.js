@@ -2,7 +2,7 @@
  * TeslaMate 换肤 —— 配合 theme.css 的一点点脚本，由 deploy/theme/nginx/teslamate-theme.conf 注入。
  *
  *   1. <meta name="theme-color"> 跟随亮 / 暗主题（手机浏览器地址栏的颜色）
- *   2. 手机底栏：补一个「主页」标签、标出当前页、「控制台」改成弹出面板
+ *   2. 导航：补「主页」「统计」两个标签（统计代替原来的 Grafana「控制台」下拉）、标出当前页
  *   3. 车辆卡片：从页面文字里读出电量、充电上限和状态，写成 data-* / CSS 变量给样式用
  *   4. 页面切换时顶部的细进度条
  *
@@ -75,81 +75,35 @@
 
   // ---------------------------------------------------------------- 2. 导航
 
-  var mobileNav = window.matchMedia("(max-width: 1023px)");
+  // 导航里的「统计」：原生统计页（/stats/，deploy/theme/assets/stats/），代替原来那个列 Grafana 面板的「控制台」下拉。
+  // Grafana 原版面板的链接都挪进了统计首页，那边还能打开
+  var STATS_LABEL = { ja: "統計", ko: "통계", "zh-hans": "统计", "zh-hant": "統計" };
 
   var setupNav = safe(function () {
     var end = doc.querySelector("#navbar .navbar-end");
     if (!end || end.querySelector(".tm-home")) return;
 
     var brand = doc.querySelector(".navbar-brand > a.navbar-item");
-    var home = doc.createElement("a");
-    home.className = "navbar-item tm-home";
-    home.href = (brand && brand.getAttribute("href")) || "/";
-    home.innerHTML =
-      '<span class="icon"><i class="mdi mdi-car-side"></i></span><span></span>';
-    home.lastChild.textContent = homeLabel();
+    var home = navItem("tm-home", (brand && brand.getAttribute("href")) || "/", "mdi-car-side", homeLabel());
     end.insertBefore(home, end.firstChild);
 
+    var stats = navItem("tm-stats", "/stats/", "mdi-chart-box-outline", localized(STATS_LABEL, "Stats"));
+    end.insertBefore(stats, home.nextSibling);
+
     var dropdown = end.querySelector(".navbar-item.has-dropdown");
-    if (dropdown) {
-      var toggle = dropdown.querySelector(".navbar-link");
-      var menu = dropdown.querySelector(".navbar-dropdown");
-      // 原版这个链接没有 href，键盘既 Tab 不到也按不动
-      toggle.tabIndex = 0;
-      toggle.setAttribute("role", "button");
-      if (!menu.id) menu.id = "tm-dashboards";
-      toggle.setAttribute("aria-controls", menu.id);
-      toggle.addEventListener("keydown", function (e) {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          toggle.click();
-        }
-      });
-      // 桌面上鼠标点一下别让它拿到焦点：Bulma 的 :focus-within 会让下拉框一直开着，鼠标移开也不收
-      toggle.addEventListener("mousedown", function (e) {
-        if (mobileNav.matches) return;
-        e.preventDefault();
-        var active = doc.activeElement;
-        if (active && active !== toggle && dropdown.contains(active)) active.blur();
-      });
-      toggle.addEventListener("click", function (e) {
-        if (!mobileNav.matches) return;
-        e.preventDefault();
-        e.stopPropagation();
-        setSheet(dropdown, !dropdown.classList.contains("tm-open"));
-      });
-      menu.addEventListener("click", function (e) {
-        if (e.target.closest("a")) setSheet(dropdown, false);
-      });
-      doc.addEventListener("click", function (e) {
-        if (dropdown.classList.contains("tm-open") && !dropdown.contains(e.target)) {
-          setSheet(dropdown, false);
-        }
-      });
-      doc.addEventListener("keydown", function (e) {
-        if (e.key !== "Escape" || !dropdown.classList.contains("tm-open")) return;
-        var hadFocus = dropdown.contains(doc.activeElement);
-        setSheet(dropdown, false);
-        if (hadFocus) toggle.focus();
-      });
-      // aria-expanded 只在手机面板模式下有意义；桌面上下拉框由 Bulma 的悬停 / 焦点控制，不报状态免得报错
-      var onBreakpoint = function () {
-        setSheet(dropdown, false);
-        if (!mobileNav.matches) toggle.removeAttribute("aria-expanded");
-      };
-      onBreakpoint();
-      if (mobileNav.addEventListener) mobileNav.addEventListener("change", onBreakpoint);
-      else if (mobileNav.addListener) mobileNav.addListener(onBreakpoint);
-    }
+    if (dropdown) dropdown.parentNode.removeChild(dropdown);
 
     markActive();
   });
 
-  function setSheet(dropdown, open) {
-    dropdown.classList.toggle("tm-open", open);
-    root.classList.toggle("tm-sheet-open", open);
-    var toggle = dropdown.querySelector(".navbar-link");
-    if (toggle && mobileNav.matches) toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  function navItem(cls, href, icon, label) {
+    var a = doc.createElement("a");
+    a.className = "navbar-item " + cls;
+    a.href = href;
+    a.innerHTML = '<span class="icon"><i class="mdi"></i></span><span></span>';
+    a.querySelector(".mdi").classList.add(icon);
+    a.lastChild.textContent = label;
+    return a;
   }
 
   var markActive = safe(function () {
