@@ -3,16 +3,19 @@
 //
 // 数字的口径：
 //   概况：电量、续航、里程表、软件版本和 Overview 面板的 Battery Level / Range / Odometer / Firmware 一样取最近一条记录；
-//   本月：里程、平均能耗（净）和 Overview 的 Total Distance logged / Ø Consumption (net) 同一算法，
+//         正在充电 / 行驶时车名下面多一行状态（LIVE_SQL，和充电页、时间线同一个口径；中途断掉的不算）；
+//   本月：里程、能耗（净）和 Overview 的 Total Distance logged / Ø Consumption (net) 同一算法，
 //         行程、充电和行程页、充电页的列表一样只算已经结束的（充电再去掉充进 0 kWh 的）；
+//   最近行程 / 充电：已经结束的，加上正在进行的那一次（中途断掉的不列，它们在行程页、充电页单独一节）；
 //   电池：估算衰减、满电续航照 Battery Health 面板的 aux 变量（custom_kwh_new / custom_max_range 取默认 0）。
 import { html } from "../core/ui.js";
 import * as ui from "../core/ui.js";
 import * as api from "../core/api.js";
 import * as fmt from "../core/format.js";
 import { entries, GRAFANA_DASHBOARDS } from "./registry.js";
-import { DRIVE_ITEM_SQL, driveItem } from "./_drive-item.js";
+import { DRIVE_ITEM_SQL, driveItem, lenText, lenDigits } from "./_drive-item.js";
 import { CHARGE_ITEM_SQL, chargeItem } from "./_charge-item.js";
+import { LIVE_SQL, chargeStateSql, driveStateSql, statePill } from "./_shared.js";
 
 export const title = "统计";
 export const range = null;
@@ -44,6 +47,32 @@ left join lateral (
   order by date desc
   limit 1
 ) as l on true`;
+
+// 正在进行的充电 / 行驶（最多一行，见 _shared.js LIVE_SQL），再补上状态行要的几个数：
+//   充电：第一条和最新一条 charges 记录的电量、最新的功率、已充入的电量（和充电详情一样取记录里的最大值）；
+//   行驶：这次行程带续航的位置点（判断在不在行驶看的也是它们）里程表的差、最新一个点的车速。
+//         带上「出发以后」的时间条件，只扫这一小段（positions 的 drive_id 只有 BRIN 索引，光按它找会扫很多行）
+// 刚开始、还没有记录时这几项是空的，状态行只写开始的时刻
+const LIVE_DETAIL_SQL = `with live as (${LIVE_SQL})
+select live.kind, live.id, live.start_date,
+  ch.first_soc, ch.last_soc, ch.power, ch.added,
+  dr.distance, dr.speed
+from live
+left join lateral (
+  select (array_agg(battery_level order by date))[1] as first_soc,
+         (array_agg(battery_level order by date desc))[1] as last_soc,
+         (array_agg(charger_power order by date desc))[1] as power,
+         max(charge_energy_added) as added
+  from charges
+  where live.kind = 'charge' and charging_process_id = live.id
+) ch on true
+left join lateral (
+  select convert_km((max(odometer) - min(odometer))::numeric, '$length_unit') as distance,
+         convert_km((array_agg(speed order by date desc))[1]::numeric, '$length_unit') as speed
+  from positions
+  where live.kind = 'drive' and car_id = $car_id and ideal_battery_range_km is not null
+    and date >= live.start_date and drive_id = live.id
+) dr on true`;
 
 // 本月和上月同期：两段时间各一行（k = cur / prev）。f、t 是毫秒，在 JS 里算好（整数，直接拼进 SQL）
 function monthSql(w) {
@@ -234,8 +263,9 @@ async function loadData(ctx, slot) {
         car: CAR_SQL,
         month: monthSql(w),
         battery: BATTERY_SQL,
-        drives: DRIVE_ITEM_SQL("true", { limit: 3 }),
-        charges: CHARGE_ITEM_SQL("true", { limit: 3 })
+        live: LIVE_DETAIL_SQL,
+        drives: DRIVE_ITEM_SQL(`d.end_date is not null or ${driveStateSql("d")} = 'driving'`, { incomplete: true, limit: 3 }),
+        charges: CHARGE_ITEM_SQL(`cp.end_date is not null or ${chargeStateSql("cp")} = 'charging'`, { incomplete: true, limit: 3 })
       },
       { signal: ctx.signal }
     );
@@ -257,7 +287,7 @@ async function loadData(ctx, slot) {
     slot,
     html`<div class="pg-home-data">
       <div class="pg-home-top">
-        ${heroHtml(ctx.car, d.car[0] || {}, ctx)}
+        ${heroHtml(ctx.car, d.car[0] || {}, d.live[0], ctx)}
         ${batteryHtml(d.battery[0] || {}, ctx)}
       </div>
       ${ui.section("本月", monthStats(cur, prevEmpty ? null : prev), {
@@ -305,7 +335,32 @@ function fact(icon, label, value, { sub, href, extra } = {}) {
   return href ? html`<a class="pg-home-fact" href="${href}">${body}</a>` : html`<div class="pg-home-fact">${body}</div>`;
 }
 
-function heroHtml(car, info, ctx) {
+// 正在充电 / 行驶：一行状态，点进这次充电 / 行程的详情。live 为空（停着、睡着，或者只有中途断掉的记录）时不画。
+// 一行放不下时从后往前整项藏（ui.fit），开始的时刻最先藏
+function liveHtml(live, ctx) {
+  if (!live) return "";
+  const charging = live.kind === "charge";
+  const items = charging
+    ? [
+        live.first_soc != null && live.last_soc != null && `${live.first_soc}→${live.last_soc}%`,
+        live.power > 0 && fmt.kw(live.power),
+        live.added > 0 && `已充 ${fmt.kwh(live.added, 1)}`,
+        `${fmt.time(live.start_date)} 开始`
+      ]
+    : [
+        // 刚出发只有一个位置点时差是 0，不写「已开 0.0 km」
+        live.distance > 0 && `已开 ${lenText(live.distance)}`,
+        live.speed != null && fmt.speed(live.speed),
+        `${fmt.time(live.start_date)} 出发`
+      ];
+  return html`<a class="pg-home-live" href="${ctx.href(`/stats/${charging ? "charges" : "drives"}/${live.id}`)}">
+    ${statePill(charging ? "charging" : "driving")}
+    ${ui.fit(items, { sep: true, cls: "tm-num" })}
+    ${ui.icon("chevron-right", { cls: "tm-row-chevron" })}
+  </a>`;
+}
+
+function heroHtml(car, info, live, ctx) {
   const level = info.battery_level;
   // 冷车时可用电量比显示电量低（续航打折），和 TeslaMate 主页一样标出来
   const usableNote = level != null && info.usable_battery_level != null && info.usable_battery_level < level ? `可用 ${info.usable_battery_level}%` : null;
@@ -320,6 +375,7 @@ function heroHtml(car, info, ctx) {
       </div>
       ${info.date ? html`<span class="pg-home-updated" title="${fmt.dateTime(info.date)}">${fmt.rel(info.date)}更新</span>` : ""}
     </div>
+    ${liveHtml(live, ctx)}
     <div class="pg-home-facts">
       ${fact("battery-50", "电量", fmt.pct(level), {
         href: ctx.href("/stats/levels"),
@@ -359,11 +415,11 @@ function batteryHtml(b, ctx) {
       <div class="pg-home-batt-cell">
         <span class="pg-home-fact-label">满电续航</span>
         <span class="pg-home-batt-value tm-num">${fmt.len(b.current_range)}</span>
-        <span class="pg-home-fact-sub">${
+        ${
           b.max_range != null
-            ? html`<span class="pg-home-segs"><span>新车 ${fmt.len(b.max_range)}</span>${lost >= 0.5 ? html`<span>少 ${fmt.len(lost)}</span>` : ""}</span>`
-            : "—"
-        }</span>
+            ? ui.segs([`新车 ${fmt.len(b.max_range)}`, lost >= 0.5 && `少 ${fmt.len(lost)}`], { cls: "pg-home-fact-sub" })
+            : html`<span class="pg-home-fact-sub">—</span>`
+        }
       </div>
     </div>
     ${b.max_range > 0 && b.current_range != null ? ui.bar(b.current_range, b.max_range, tone || "green") : ""}
@@ -378,13 +434,14 @@ function monthStats(cur, prev) {
   const cmp = (k, opts) => (prev ? delta(cur[k], prev[k], opts) : null);
   return ui.stats(
     [
-      { label: "里程", icon: "road-variant", value: fmt.num(cur.distance, 0), unit: fmt.unit.len, sub: cmp("distance") },
+      { label: "里程", icon: "road-variant", value: cur.distance, digits: lenDigits(cur.distance), unit: fmt.unit.len, sub: cmp("distance") },
       { label: "行程", icon: "map-marker-path", value: cur.drives, unit: "次", sub: cmp("drives") },
-      { label: "耗电（净）", icon: "flash-outline", value: cur.energy != null ? fmt.num(cur.energy, 1) : cur.drives ? null : "0", unit: "kWh", sub: cmp("energy") },
+      // 没有行程时写 0；有行程却算不出（缺续航读数）时是「—」
+      { label: "耗电（净）", icon: "lightning-bolt", value: cur.drives ? cur.energy : 0, digits: 1, unit: "kWh", sub: cmp("energy") },
       // 叫「能耗（净）」和行程详情、旅程一致；「平均能耗（净）」带图标在 320 宽下会被截成「平均能耗（…」
       { label: "能耗（净）", icon: "leaf", value: cur.cons, unit: fmt.unit.cons, sub: cmp("cons", { lowerIsBetter: true }) },
       // 和充电页一样用「充进电池的电量」（按月汇总页的「充电量」是从电网取的，含损耗，会大一些）
-      { label: "充入电量", icon: "ev-station", value: fmt.num(cur.added, 1), unit: "kWh", sub: cmp("added") },
+      { label: "充入电量", icon: "battery-charging-high", value: cur.added, digits: 1, unit: "kWh", sub: cmp("added") },
       { label: "充电花费", icon: "cash-multiple", value: cur.cost != null ? fmt.money(cur.cost) : cur.charges ? null : "¥0.00", sub: cmp("cost") }
     ],
     { cols: 3 }
@@ -397,7 +454,7 @@ function entriesHtml(ctx) {
   return entries().map((g) =>
     ui.section(
       g.title,
-      html`<div class="tm-entries pg-home-entries">${g.items.map(
+      html`<div class="tm-entries">${g.items.map(
         (r) => html`<a class="tm-entry" href="${ctx.href(r.path)}">
           <span class="tm-entry-icon is-${g.tone}">${ui.icon(r.icon)}</span>
           <span class="tm-entry-main">
@@ -413,19 +470,13 @@ function entriesHtml(ctx) {
 
 // 折叠起来：大多数时候用不到，展开是一串在新窗口打开的链接（带当前车辆）
 function grafanaHtml(ctx) {
-  return html`<details class="tm-card pg-home-grafana">
-    <summary>
-      <span class="tm-entry-icon is-muted">${ui.icon("view-dashboard-outline")}</span>
-      <span class="tm-entry-main">
-        <span class="tm-entry-title">Grafana 原版面板</span>
-        <span class="tm-entry-desc">在 Grafana 里看原来的图表</span>
-      </span>
-      ${ui.icon("chevron-down", { cls: "pg-home-grafana-chevron" })}
-    </summary>
-    <div class="tm-links">${GRAFANA_DASHBOARDS.map(
+  return ui.details(
+    "Grafana 原版面板",
+    html`<div class="tm-links">${GRAFANA_DASHBOARDS.map(
       (d) => html`<a href="${ctx.grafanaLink(d.uid)}" target="_blank" rel="noopener" title="${d.en}">
         <span>${d.title}</span><small>${d.en}</small>${ui.icon("open-in-new")}
       </a>`
-    )}</div>
-  </details>`;
+    )}</div>`,
+    { icon: "view-dashboard-outline", sub: "在 Grafana 里看原来的图表", cls: "pg-home-grafana" }
+  );
 }

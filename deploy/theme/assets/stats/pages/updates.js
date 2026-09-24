@@ -112,7 +112,8 @@ export async function render(ctx) {
           label: "更新间隔",
           icon: "calendar-range",
           // 面板显示成「5.7 weeks」这种，国内习惯按天说
-          value: median != null ? fmt.num(median / 86400, median < 10 * 86400 ? 1 : 0) : null,
+          value: median != null ? median / 86400 : null,
+          digits: median != null && median < 10 * 86400 ? 1 : 0,
           unit: "天",
           sub: median != null ? "中位数" : "至少要两次更新"
         },
@@ -140,7 +141,7 @@ export async function render(ctx) {
               { key: "update_duration", label: "用时", align: "right", fmt: (v) => (v != null ? fmt.duration(v / 60) : "没有结束记录") },
               { key: "days_since", label: "距上一次", align: "right", fmt: (v, r) => sinceCell(v, r) },
               { key: "chg_ct", label: "期间充电", align: "right", fmt: (v) => (v != null ? `${fmt.int(v)} 次` : "0 次") },
-              { key: "avg_range", label: "期间满电续航", align: "right", fmt: (v) => fmt.len(v, 1) }
+              { key: "avg_range", label: "期间满电续航", align: "right", fmt: (v) => fmt.len(v, 0) }
             ],
             rows
           }),
@@ -160,19 +161,17 @@ function currentStat(cur) {
     label: "当前版本",
     icon: "car-electric-outline",
     value: v,
-    // 「9月12日安装」「12 天前」两项，一行放不下时（320 宽、去年装的带年份）整项藏掉后一项，不截成半截
-    sub: cur
-      ? html`<span class="pg-updates-fit"><span>${fmt.dateAuto(cur.start_date)}安装</span><span>${daysAgo(cur.start_date)}</span></span>`
-      : "没有更新记录"
+    // 「9月12日安装 · 12天前」，一行放不下时（320 宽、去年装的带年份）整项藏掉后一项，不截成半截
+    sub: cur ? ui.fit([`${fmt.dateAuto(cur.start_date)}安装`, daysAgo(cur.start_date)], { sep: true }) : "没有更新记录"
   };
 }
 
-// 「今天 / 昨天 / 12 天前」：fmt.rel 超过一周就只给日期，和前面的安装日期重复了
+// 「今天 / 昨天 / 12天前」：fmt.rel 超过一周就只给日期，和前面的安装日期重复了（写法和 fmt.rel 一样不加空格）
 function daysAgo(ms) {
   const d = new Date(ms);
   const now = new Date();
   const n = Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 86400e3);
-  return n <= 0 ? "今天" : n === 1 ? "昨天" : `${n} 天前`;
+  return n <= 0 ? "今天" : n === 1 ? "昨天" : `${n}天前`;
 }
 
 // ---------------------------------------------------------------- 表格单元格
@@ -211,23 +210,23 @@ async function drawChart(ctx, rows) {
   // 版本号标签：点多了或者手机上放不下，就只在提示框里看
   const labels = data.length <= 12 && !window.matchMedia("(max-width: 480px)").matches;
   // 每个点的值管到下一次更新为止（阶梯线）；最后一个版本一直用到现在，补一个不画圆点的终点把线拉到今天。
+  // 看往年的范围时只拉到范围结束：之后换没换版本不归这个范围管，拉到今天横轴会多出一大段范围外的时间。
   // 阶梯在下一个点处竖着落下来：续航比上一版低时标签放点的下面，放上面会压在上一段的横线上
   const tail = data[data.length - 1];
+  const end = Math.min(Date.now(), ctx.range.to);
   const series = data.map((x, i) => ({ value: x, label: { position: i > 0 && x[1] < data[i - 1][1] ? "bottom" : "top" } }));
-  // 第 5 列是安装时间：补的终点横坐标是「现在」，提示框里不能写成今天装的
-  if (Date.now() > tail[0]) series.push({ value: [Date.now(), tail[1], tail[2], tail[3], tail[4]], symbol: "none", label: { show: false } });
-  // 续航只差几十公里，从 0 画起就是一条平线；上下留一点（有标签时要放得下版本号）、取到 5 的倍数，刻度才整齐
-  const pad = labels ? 4 : 1;
+  // 第 5 列是安装时间：补的终点横坐标是「现在」（或范围结束），提示框里不能写成那天装的
+  if (end > tail[0]) series.push({ value: [end, tail[1], tail[2], tail[3], tail[4]], symbol: "none", label: { show: false } });
+  const [lo, hi] = rangeBounds(data.map((x) => x[1]), labels ? 4 : 1);
   await chart.create(ctx.root.querySelector("#pg-updates-chart"), {
-    grid: labels ? { top: 26 } : {},
     // 左右各留一点，第一个点的版本号标签不压在纵轴刻度上
     xAxis: chart.timeAxis({ min: (v) => v.min - (v.max - v.min) * 0.05, max: (v) => v.max + (v.max - v.min) * 0.01 }),
-    yAxis: chart.valueAxis({ unit: fmt.unit.len, scale: true, min: (v) => Math.floor((v.min - pad) / 5) * 5, max: (v) => Math.ceil((v.max + pad) / 5) * 5 }),
+    yAxis: chart.valueAxis({ unit: fmt.unit.len, min: lo, max: hi }),
     tooltip: chart.tooltip((ps) => {
       const p = Array.isArray(ps) ? ps[0] : ps;
       const [, v, ver, n, at] = p.value;
       return chart.tipHtml(`${ver}（${fmt.dateAuto(at)} 装上）`, [
-        { color: p.color, name: "平均满电续航", value: fmt.len(v, 1) },
+        { color: p.color, name: "平均满电续航", value: fmt.len(v, 0) },
         { name: "期间充电", value: `${n ?? 0} 次` }
       ]);
     }),
@@ -235,8 +234,31 @@ async function drawChart(ctx, rows) {
       {
         ...chart.line("满电续航", series, { color: "c1", symbol: true, step: "end" }),
         symbolSize: 7,
-        label: { show: labels, position: "top", color: "@text-2", fontSize: 11, formatter: (p) => p.value[2] }
+        label: { show: labels, position: "top", color: "@text-2", fontSize: 11, formatter: (p) => p.value[2] },
+        // 两次更新隔得近（隔一两周）时版本号会叠成一团：叠上的藏掉后一个，指到那个点时还会显示，提示框里也有
+        labelLayout: { hideOverlap: true }
       }
     ]
   });
+}
+
+// 纵轴刻度间隔的候选（km），从小到大试
+const Y_STEPS = [5, 10, 20, 25, 50, 100];
+
+// 纵轴上下限：续航只差几十公里，从 0 画起就是一条平线，所以贴着数据、上下留 pad（有标签时要放得下版本号）。
+// 先定刻度间隔再取整：只把上下限取到 5 的倍数的话，差 35 km 这种分不成 3–6 格，核心挑不出间隔，
+// ECharts 会画出 560 / 570 / 580 / 590 / 595 这种最后一格只有一半的刻度。
+// 取第一个分出来不超过 6 格的间隔；不到 3 格时往留白少的一头补满 3 格（只有两格的话核心按 4 等分，
+// 会挑出 537.5 这种带小数的刻度）。上下限之差正好是间隔的 3–6 倍，核心总能等分
+function rangeBounds(vals, pad) {
+  const min = Math.min(...vals) - pad;
+  const max = Math.max(...vals) + pad;
+  const step = Y_STEPS.find((s) => Math.ceil(max / s) - Math.floor(min / s) <= 6) || Y_STEPS[Y_STEPS.length - 1];
+  let lo = Math.floor(min / step) * step;
+  let hi = Math.ceil(max / step) * step;
+  while (hi - lo < 3 * step) {
+    if (hi - max <= min - lo) hi += step;
+    else lo -= step;
+  }
+  return [lo, hi];
 }

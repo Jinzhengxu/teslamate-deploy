@@ -41,28 +41,7 @@
   }
 }
 
-/* 分组（.tm-section）是 grid，里面的块默认 min-width: auto，会被宽表格撑出屏幕；让表格在自己的框里横向滚 */
-.pg-sum-list {
-  display: grid;
-  min-width: 0;
-}
-
-/* 手机和平板是一个周期一张卡，桌面（≥1024）是表格：九列在平板宽度下放不下，只能横着滚，不如卡片好看 */
-.pg-sum-table {
-  display: none;
-}
-
-@media screen and (min-width: 1024px) {
-  .pg-sum-cards {
-    display: none !important;
-  }
-
-  .pg-sum-table {
-    display: block;
-  }
-}
-
-/* ---------------------------------------------------------------- 手机 / 平板：每个周期一张卡 */
+/* ---------------------------------------------------------------- 手机 / 平板：每个周期一张卡（桌面是表格，JS 按宽度只画一种） */
 
 .pg-sum-cards {
   display: grid;
@@ -195,34 +174,11 @@ a.pg-sum-cell:active {
   white-space: nowrap;
 }
 
-/* 次要的一行可以折行：「¥0.45/度 · ¥9.66/百公里」在 320 宽下放不进一行，截断就丢信息了。
-   按段折，每段不拆开；段前的「·」画在段左边 14px 的空里，整排往左挪 14px、外层裁掉，
-   这样换到行首的那一段的「·」正好在裁掉的地方，不会出现以「·」开头的行 */
+/* 次要的一行（ui.segs）：「¥0.45/度 · ¥9.66/百公里」在 320 宽下放不进一行时按段折，截断就丢信息了 */
 .pg-sum-cell-sub {
-  overflow: hidden;
   color: var(--tm-text-hint);
   font-size: 12px;
   line-height: 1.4;
-}
-
-.pg-sum-segs {
-  display: flex;
-  flex-wrap: wrap;
-  margin-left: -14px;
-}
-
-.pg-sum-segs > span {
-  position: relative;
-  margin-left: 14px;
-  white-space: nowrap;
-}
-
-.pg-sum-segs > span::before {
-  content: "·";
-  position: absolute;
-  left: -14px;
-  width: 14px;
-  text-align: center;
 }
 
 /* ---------------------------------------------------------------- 桌面：表格 */
@@ -272,19 +228,7 @@ a.pg-sum-cell:active {
   font-size: 11.5px;
 }
 
-/* ---------------------------------------------------------------- 再显示 / 说明 */
-
-.pg-sum-more {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 0 8px;
-}
-
-.pg-sum-more .tm-note {
-  margin: 0;
-}
+/* ---------------------------------------------------------------- 说明 */
 
 .pg-sum-foot {
   margin: 0;

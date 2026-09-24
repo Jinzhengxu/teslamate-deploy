@@ -267,13 +267,9 @@ function share(part, total) {
   return total > 0 && Number.isFinite(part) ? (part / total) * 100 : null;
 }
 
-// 占比取整（各页统一）；不到 1% 的写「<1%」、差一点到 100% 的写「>99%」，免得出现「0%」和「100%」并排
-const pctText = (v) => (v != null && v > 0 && v < 1 ? "<1%" : v != null && v > 99 && v < 100 ? ">99%" : fmt.pct(v));
-
 // ---------------------------------------------------------------- 渲染
 
 export async function render(ctx) {
-  ctx.root.classList.add("pg-cs");
   ui.render(ctx.root, ui.skeleton(["stats", "chart", "chart", "list"]));
 
   // 收藏点筛选：geofence=1 或 1,2（和充电列表页同一种写法，面板里也是多选）。坏项跳过，不报「找不到记录」
@@ -305,7 +301,8 @@ export async function render(ctx) {
           : ui.empty(ctx.range.kind === "all" ? "还没有充电记录。" : `${ctx.range.label}没有充电记录。`, {
               icon: "ev-station",
               title: "没有充电",
-              action: ctx.range.kind !== "all" ? ui.button("查看全部时间", { kind: "soft", href: ctx.href("/stats/charging", { r: "all" }) }) : null
+              // 这页默认就是「全部」，所以回默认范围（不往 URL 写 r）
+              action: ctx.range.kind !== "all" ? ui.button("查看全部时间", { kind: "soft", href: ctx.href("/stats/charging", { r: null }) }) : null
             })
       )}`
     );
@@ -322,13 +319,13 @@ export async function render(ctx) {
 
   const stats = ui.stats(
     [
-      { label: "充电次数", value: s.n, unit: "次", icon: "ev-station", sub: ac || dc ? `交流 ${ac ? ac.n : 0} · 直流 ${dc ? dc.n : 0}` : null },
+      { label: "充电次数", value: s.n, unit: "次", icon: "ev-station", sub: ac || dc ? ui.segs([`交流 ${fmt.int(ac ? ac.n : 0)}`, `直流 ${fmt.int(dc ? dc.n : 0)}`]) : null },
       // 一位小数；上万度（开了几年的「全部」）时 320 宽的宫格放不下「12,345.6 kWh」，会被截成「12,345…」，只有这时取整
       { label: "充入电量", value: s.added, digits: s.added >= 10000 ? 0 : 1, unit: "kWh", icon: "battery-charging-high", sub: `平均每次 ${kwhText(s.added / s.n)}` },
-      { label: "总花费", value: fmt.money(s.cost), icon: "cash-multiple", sub: s.no_cost ? `${s.no_cost} 次没有记录费用` : null },
-      { label: "超充花费", value: fmt.money(suc), icon: "lightning-bolt", sub: s.cost > 0 && suc != null ? `占总花费 ${pctText(share(suc, s.cost))}` : null },
+      { label: "总花费", value: fmt.money(s.cost), icon: "cash-multiple", sub: s.no_cost ? `${fmt.int(s.no_cost)} 次没有记录费用` : null },
+      { label: "超充花费", value: fmt.money(suc), icon: "lightning-bolt", sub: s.cost > 0 && suc != null ? `占总花费 ${fmt.share(share(suc, s.cost))}` : null },
       // 面板的算法：行驶耗电 × 每度「充入电量」的花费（不是旁边按用电量算的平均单价）
-      { label: perLen, value: fmt.money(per100), icon: "road-variant", sub: per100 != null ? "按行驶耗电折算" : s.cost == null ? "没有费用记录" : "这段时间没有行驶" },
+      { label: perLen, value: fmt.money(per100), icon: "cash-multiple", sub: per100 != null ? "按行驶耗电折算" : s.cost == null ? "没有费用记录" : "这段时间没有行驶" },
       { label: "平均单价", value: fmt.money(s.per_kwh), unit: "/度", icon: "tag-outline", sub: "按用电量算" },
       { label: "交流单价", value: fmt.money(ac && ac.per_kwh), unit: "/度", icon: "power-plug-outline", sub: ac ? `用电 ${kwhText(ac.energy)}` : "没有交流充电" },
       { label: "直流单价", value: fmt.money(dc && dc.per_kwh), unit: "/度", icon: "flash-outline", sub: dc ? `用电 ${kwhText(dc.energy)}` : "没有直流快充" }
@@ -377,7 +374,7 @@ export async function render(ctx) {
           "充电地点",
           d.places.some((r) => r.latitude != null)
             ? ui.card(ui.mapBox("cs-map", { height: 340 }), { pad: false })
-            : ui.card(ui.empty("没有位置数据。", { icon: "map-outline" })),
+            : ui.card(ui.empty("这段时间的充电没有位置记录。", { icon: "map-outline" })),
           { sub: "圆越大充的电越多，点圆圈看详情" }
         )}
       </div>
@@ -385,16 +382,18 @@ export async function render(ctx) {
         ${ui.section(
           "充电最多的地点",
           ui.card(
-            ui.rank(
-              topEnergy.map((r) => ({
-                name: placeTitle(r),
-                href: chargesHref(ctx, r),
-                value: r.energy,
-                text: kwhText(r.energy),
-                sub: [placeCity(r), `${r.n} 次`, `占 ${pctText(share(r.energy, placeTotal))}`].filter(Boolean).join(" · ")
-              })),
-              { tone: "green" }
-            )
+            topEnergy.length
+              ? ui.rank(
+                  topEnergy.map((r) => ({
+                    name: placeTitle(r),
+                    href: chargesHref(ctx, r),
+                    value: r.energy,
+                    text: kwhText(r.energy),
+                    sub: [placeCity(r), `${fmt.int(r.n)} 次`, `占 ${fmt.share(share(r.energy, placeTotal))}`].filter(Boolean).join(" · ")
+                  })),
+                  { tone: "green" }
+                )
+              : ui.empty("这段时间的充电都没有记录充入电量。", { icon: "battery-charging-high" })
           ),
           { sub: "点地点看在那里的每次充电" }
         )}
@@ -408,7 +407,7 @@ export async function render(ctx) {
                     href: chargesHref(ctx, r),
                     value: r.cost,
                     text: fmt.money(r.cost),
-                    sub: [placeCity(r), `${r.n} 次有费用`, `占 ${pctText(share(r.cost, costTotal))}`].filter(Boolean).join(" · ")
+                    sub: [placeCity(r), `${fmt.int(r.n)} 次有费用`, `占 ${fmt.share(share(r.cost, costTotal))}`].filter(Boolean).join(" · ")
                   })),
                   { tone: "amber" }
                 )
@@ -420,12 +419,12 @@ export async function render(ctx) {
       <div class="tm-grid-2">
         ${ui.section(
           "充到多少",
-          ui.card(socList(d.endSoc, (soc) => (lfp ? null : soc >= 91 ? "red" : soc >= 81 ? "amber" : null))),
+          ui.card(socList(d.endSoc, (soc) => (lfp ? null : soc >= 91 ? "red" : soc >= 81 ? "amber" : null), "这段时间没有结束电量记录。")),
           { sub: lfp ? "充电结束时的电量。连续几次充电（中间没开车）只算最后一次" : "充电结束时的电量，超过 80% 标黄、超过 90% 标红。连续几次充电只算最后一次" }
         )}
         ${ui.section(
           "从多少开始充",
-          ui.card(socList(d.startSoc, (soc) => (soc < 10 ? "red" : soc < 20 ? "amber" : null))),
+          ui.card(socList(d.startSoc, (soc) => (soc < 10 ? "red" : soc < 20 ? "amber" : null), "这段时间没有开始电量记录。")),
           { sub: "开始充电时的电量，低于 20% 标黄、低于 10% 标红。连续几次充电只算第一次" }
         )}
       </div>
@@ -497,13 +496,13 @@ function splitCard(ac, dc) {
     const pb = share(b || 0, total);
     return html`<div class="pg-cs-split">
       <div class="tm-between"><span class="tm-strong">${label}</span><span class="tm-num tm-small tm-muted">合计 ${text(total)}</span></div>
-      <div class="pg-cs-split-bar" role="img" aria-label="${`${label}：交流 ${pctText(pa)}，直流 ${pctText(pb)}`}">
+      <div class="pg-cs-split-bar" role="img" aria-label="${`${label}：交流 ${fmt.share(pa)}，直流 ${fmt.share(pb)}`}">
         ${a > 0 ? html`<span class="is-ac" style="${`flex-grow:${a}`}"></span>` : ""}
         ${b > 0 ? html`<span class="is-dc" style="${`flex-grow:${b}`}"></span>` : ""}
       </div>
       <div class="pg-cs-split-legend">
-        <span><i class="is-ac"></i>交流 <b class="tm-num">${a > 0 ? text(a) : "没有"}</b>${a > 0 ? html`<em>${pctText(pa)}</em>` : ""}</span>
-        <span><i class="is-dc"></i>直流 <b class="tm-num">${b > 0 ? text(b) : "没有"}</b>${b > 0 ? html`<em>${pctText(pb)}</em>` : ""}</span>
+        <span><i class="is-ac"></i>交流 <b class="tm-num">${a > 0 ? text(a) : "没有"}</b>${a > 0 ? html`<em>${fmt.share(pa)}</em>` : ""}</span>
+        <span><i class="is-dc"></i>直流 <b class="tm-num">${b > 0 ? text(b) : "没有"}</b>${b > 0 ? html`<em>${fmt.share(pb)}</em>` : ""}</span>
       </div>
     </div>`;
   };
@@ -516,8 +515,8 @@ function splitCard(ac, dc) {
 
 // ---------------------------------------------------------------- 电量分布（Charge Stats / Discharge Stats）
 
-function socList(rows, toneOf) {
-  if (!rows.length) return ui.empty("没有数据。");
+function socList(rows, toneOf, emptyText) {
+  if (!rows.length) return ui.empty(emptyText, { icon: "battery-outline" });
   const max = Math.max(...rows.map((r) => r.n));
   const total = rows.reduce((a, r) => a + r.n, 0);
   return html`<div class="pg-cs-soc">${rows.map((r) => {
@@ -525,7 +524,7 @@ function socList(rows, toneOf) {
     return html`<div class="pg-cs-soc-row">
       <span class="pg-cs-soc-label tm-num${t ? ` tm-tone-${t}` : ""}">${fmt.pct(r.soc)}</span>
       ${ui.bar(r.n, max, t || "accent")}
-      <span class="pg-cs-soc-n tm-num">${r.n} 次<em>${pctText(share(r.n, total))}</em></span>
+      <span class="pg-cs-soc-n tm-num">${fmt.int(r.n)} 次<em>${fmt.share(share(r.n, total))}</em></span>
     </div>`;
   })}</div>`;
 }
@@ -535,7 +534,7 @@ function socList(rows, toneOf) {
 async function drawDelta(ctx, rows, limits, span) {
   const el = ctx.root.querySelector("#cs-delta");
   if (!rows.length) {
-    ui.render(el.parentElement, ui.empty("没有数据。"));
+    ui.render(el.parentElement, ui.empty("这段时间的充电没有开始、结束电量记录。", { icon: "battery-outline" }));
     return;
   }
   const data = rows.map((r) => [r.time, r.start_soc, r.end_soc]);
@@ -543,12 +542,15 @@ async function drawDelta(ctx, rows, limits, span) {
   await chart.create(el, {
     xAxis: chart.timeAxis({ min: span.from, max: span.to }),
     yAxis: chart.valueAxis({ unit: "%", min: 0, max: 100 }),
-    tooltip: chart.tooltip((p) =>
-      chart.tipHtml(fmt.dateTime(p.value[0]), [
-        { color: p.color, name: "电量", value: `${fmt.num(p.value[1])}→${fmt.pct(p.value[2])}` },
-        { name: "充了", value: `${fmt.num(p.value[2] - p.value[1])} 个百分点` }
-      ])
-    ),
+    tooltip: chart.tooltip((p) => {
+      const [t, a, b] = p.value;
+      // 哪头的电量没记下来就不写这一项（不拼出「42→—%」）
+      const both = a != null && b != null;
+      return chart.tipHtml(fmt.dateTime(t), [
+        both ? { color: p.color, name: "电量", value: `${fmt.num(a)}→${fmt.pct(b)}` } : null,
+        both ? { name: "充了", value: `${fmt.num(b - a)} 个百分点` } : null
+      ]);
+    }),
     dataZoom: n > 60 ? chart.zoom() : undefined,
     series: [
       {
@@ -614,35 +616,77 @@ function heatData(rows, span) {
       data.push([x, y, v, c.start, c.end]);
     })
   );
-  const label = (t, i) => {
-    const d = new Date(t);
-    if (unit === "month") return i === 0 || d.getMonth() === 0 ? fmt.month(t) : `${d.getMonth() + 1}月`;
-    return fmt.date(t);
-  };
   return {
     unit,
     unitLabel: unit === "month" ? "按月" : unit === "week" ? "按周" : "按天",
-    labels: cols.map(label),
+    cols,
     titles: cols.map((t) => chart.bucketTitle(t, unit)),
     data,
     max
   };
 }
 
+// 横轴标签隔几列放一个，间隔按图宽自己挑，不交给 ECharts 自动隔：自动隔是从第一列起每 N 列留一个，
+// 跨年的范围里带年份的那一列常常正好被隔掉（「2025年3月 7月 11月 3月 7月」，看不出后面是哪年）。
+// 按月的只放整齐的月份（隔 3 个月就是 1、4、7、10 月，1 月一定在里面），每年露出来的第一个标签带上年份
+// （按天、按周的用 dateAuto：今年的不写年份）。返回 Map：列下标 → 标签文字
+const HEAT_MONTH_STEPS = [1, 2, 3, 4, 6, 12, 24, 60, 120];
+// 标签大概多宽（按桌面 12px 字号，宁宽勿窄）：汉字 12px，数字 7px
+const labelWidth = (s) => [...s].reduce((a, c) => a + (c.codePointAt(0) > 0xff ? 12 : 7), 0);
+
+function heatLabels(h, width) {
+  const at = h.cols.map((t) => new Date(t));
+  const text = (i, withYear) => {
+    if (h.unit === "month") return withYear ? fmt.month(h.cols[i]) : `${at[i].getMonth() + 1}月`;
+    return withYear ? fmt.dateAuto(h.cols[i]) : fmt.date(h.cols[i]);
+  };
+  // 每列多宽：扣掉左边电量档那一列刻度文字和留白（实测图宽 324 时横轴 266、430 时 369）
+  const colW = Math.max(60, width - 64) / h.cols.length;
+  const lay = (idx) => {
+    const txt = idx.map((i, j) => text(i, j === 0 || at[i].getFullYear() !== at[idx[j - 1]].getFullYear()));
+    const fits = idx.every((i, j) => j === 0 || (i - idx[j - 1]) * colW >= (labelWidth(txt[j - 1]) + labelWidth(txt[j])) / 2 + 8);
+    return { fits, map: new Map(idx.map((i, j) => [i, txt[j]])) };
+  };
+  const all = h.cols.map((_, i) => i);
+  let last = null;
+  for (const k of h.unit === "month" ? HEAT_MONTH_STEPS : all.map((i) => i + 1)) {
+    const on = all.filter((i) => (h.unit === "month" ? at[i].getFullYear() * 12 + at[i].getMonth() : i) % k === 0);
+    // 第一列不在整齐的月份上时：放得下也标上（看得出范围从哪儿开始），放不下就让给后面那个整齐的
+    for (const idx of on[0] === 0 ? [on] : [[0, ...on], on]) {
+      if (!idx.length) continue;
+      last = lay(idx);
+      if (last.fits) return last.map;
+    }
+  }
+  // 年份跨得太长、图又太窄，隔多少都挤：用最稀的那一种，真重叠了由 ECharts 藏掉
+  return last.map;
+}
+
 async function drawHeat(ctx, h) {
   const el = ctx.root.querySelector("#cs-heat");
   if (!h) {
-    ui.render(el.parentElement, ui.empty("没有数据。"));
+    ui.render(el.parentElement, ui.empty("这段时间的充电没有开始、结束电量记录。", { icon: "battery-outline" }));
     return;
   }
+  // 图宽变了（转屏、拖窗口）ECharts 重排坐标轴时会再调 interval / formatter，标签跟着重挑；同一个宽度只算一次
+  let cache = null;
+  const labels = () => {
+    const w = el.clientWidth;
+    if (!cache || cache.w !== w) cache = { w, map: heatLabels(h, w) };
+    return cache.map;
+  };
   await chart.create(el, {
-    xAxis: chart.categoryAxis(h.labels, { splitArea: { show: false }, axisLine: { show: false } }),
+    xAxis: chart.categoryAxis(h.titles, {
+      splitArea: { show: false },
+      axisLine: { show: false },
+      axisLabel: { interval: (i) => labels().has(i), formatter: (_, i) => labels().get(i) || "" }
+    }),
     yAxis: chart.categoryAxis(SOC_BUCKETS, { name: "电量 %", nameLocation: "end", nameGap: 8, nameTextStyle: { align: "left" }, splitLine: { show: false } }),
     visualMap: { min: 0, max: Math.max(1, h.max), show: true, text: ["多", "少"], dimension: 2 },
     tooltip: chart.tooltip((p) =>
       chart.tipHtml(`${h.titles[p.value[0]]} · 电量 ${SOC_BUCKETS[p.value[1]]}%`, [
-        { name: "开始充电", value: `${p.value[3]} 次` },
-        { name: "充完", value: `${p.value[4]} 次` }
+        { name: "开始充电", value: `${fmt.int(p.value[3])} 次` },
+        { name: "充完", value: `${fmt.int(p.value[4])} 次` }
       ])
     ),
     series: [{ type: "heatmap", name: "次数", data: h.data }]
@@ -722,7 +766,7 @@ async function drawMap(ctx, places, total) {
         const r = p[3];
         const city = placeCity(r);
         return html`<strong>${placeTitle(r)}</strong>${city ? html`<br>${city}` : ""}<br>
-          ${kwhText(r.energy)} · 占 ${pctText(share(r.energy, total))} · ${r.n} 次`;
+          ${kwhText(r.energy)} · 占 ${fmt.share(share(r.energy, total))} · ${fmt.int(r.n)} 次`;
       }
     }
   );

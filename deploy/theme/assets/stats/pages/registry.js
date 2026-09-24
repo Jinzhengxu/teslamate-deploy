@@ -11,7 +11,6 @@
  *   grafana  对应的 Grafana 面板 uid（字符串，或多个时用数组），页头「⋯」菜单里放「在 Grafana 中打开」
  *   grafanaVars(params)  打开 Grafana 时额外带的参数（详情页带上 id）
  *   parent   返回按钮的上级页面（没有浏览历史时用）
- *   hidden   不出现在任何导航里（开发用的页面）
  *   noCar    没有车辆数据时也能打开
  */
 
@@ -51,9 +50,7 @@ export const ROUTES = [
   { path: "/stats/updates", module: "updates.js", title: "软件更新", group: "vehicle", icon: "update", grafana: "IiC07mgWz", desc: "车机软件版本和更新间隔" },
 
   { path: "/stats/visited", module: "visited.js", title: "足迹", group: "places", icon: "map-outline", grafana: "RG_DxSmgk", desc: "开车去过的地方，画在地图上" },
-  { path: "/stats/locations", module: "locations.js", title: "地点", group: "places", icon: "map-marker-multiple-outline", grafana: "ZzhF-aRWz", desc: "常去的城市、地址和收藏点" },
-
-  { path: "/stats/_gallery", module: "_gallery.js", title: "组件样板", group: null, icon: "palette-outline", hidden: true, noCar: true }
+  { path: "/stats/locations", module: "locations.js", title: "地点", group: "places", icon: "map-marker-multiple-outline", grafana: "ZzhF-aRWz", desc: "常去的城市、地址和收藏点" }
 ];
 
 // Grafana 原版面板（统计首页底部的列表）：TeslaMate 导航里原来的 19 个面板 + 荷兰税务报表
@@ -122,5 +119,5 @@ export function byPath(path) {
 
 // 首页用：按分组列出入口
 export function entries() {
-  return GROUPS.map((g) => ({ ...g, items: ROUTES.filter((r) => r.group === g.id && !r.hidden) })).filter((g) => g.items.length);
+  return GROUPS.map((g) => ({ ...g, items: ROUTES.filter((r) => r.group === g.id) })).filter((g) => g.items.length);
 }

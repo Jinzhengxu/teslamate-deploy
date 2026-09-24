@@ -425,6 +425,27 @@ function makeTipFormatter(fmts) {
 
 // ---------------------------------------------------------------- 组装
 
+// 图例折行时项之间的间隔：ECharts 的 itemGap 横竖两个方向共用，比一行时的 14 紧一点，多一行只多占 23px 左右
+const LEGEND_WRAP_GAP = 12;
+
+// 图例在宽 w 的图上排成几行。一行（按原来的间隔）摆得下是 1；否则按折行的间隔从左往右排，排满一行换下一行。
+// 每项宽 = 色块 + 5px + 文字（ECharts 就是这么排的），图例四边自带 5px 内边距
+function legendRows(names, lg, fs, w) {
+  const widths = names.map((n) => lg.itemWidth + 5 + textWidth(n, fs));
+  const room = w - 10;
+  if (widths.reduce((s, x) => s + x, 0) + lg.itemGap * (widths.length - 1) <= room) return 1;
+  let rows = 1;
+  let x = 0;
+  for (const iw of widths) {
+    if (x > 0 && x + iw > room) {
+      rows++;
+      x = 0;
+    }
+    x += iw + LEGEND_WRAP_GAP;
+  }
+  return rows;
+}
+
 // 标签是否画出来（show: false 或 axisLabel.show: false 的不算）
 const labelsShown = (a) => a && a.show !== false && !(a.axisLabel && a.axisLabel.show === false);
 
@@ -487,6 +508,7 @@ function build(src, extra = {}, inst = null) {
   if (hasCartesian) {
     let edge = 0;
     const niceAxes = [];
+    const shortTime = [];
     for (const [k, isX] of [["xAxis", true], ["yAxis", false]]) {
       if (o[k] == null) continue;
       const axes = asArray(o[k]).map((a, i) => {
@@ -499,6 +521,10 @@ function build(src, extra = {}, inst = null) {
         if (type === "time" && ext && a.splitNumber == null && inst && ext[1] - ext[0] > 180 * DAY && crossesYear(ext)) {
           if ((isX ? inst.getWidth() : inst.getHeight()) < 480) r.splitNumber = 3;
         }
+        // 一天多到八天的时间轴：ECharts 按小时出刻度（手机上 6 小时一格），0 点那一格的日期「9月24日」夹在「18:00」「06:00」中间，
+        // 被当成重叠的字藏掉，只剩「06:00 12:00 18:00 06:00…」，看不出是哪天。刻度按图宽放稀（每格约 85px，下面算），日期就留得住。
+        // 一天以内的（过夜的充电）不动：放稀了只剩「9月19日 01:00」两个刻度，还不如原来一刻钟一格
+        if (isX && type === "time" && ext && a.splitNumber == null && inst && ext[1] - ext[0] > DAY && ext[1] - ext[0] <= 8 * DAY) shortTime.push(r);
         // 时间轴的刻度文字居中压在刻度上，靠边的那个离画布边不到半个字宽时会被切掉（「9月22E」）。
         // outerBoundsContain 按估算的刻度留白，实际刻度和估算的不一样时就漏了。所以按最宽的标签算出半个字宽，
         // 下面给「没有纵轴文字」的一侧留出来（有纵轴文字的一侧本来就有这么宽）
@@ -513,15 +539,32 @@ function build(src, extra = {}, inst = null) {
       });
       out[k] = Array.isArray(o[k]) ? axes : axes[0];
     }
+    // 第一根纵轴默认在左，同一个 grid 的第二根默认在右
+    const ys = asArray(out.yAxis);
+    const side = (a, i) => a.position || (i === 0 ? "left" : "right");
+    const labelled = (where) => ys.some((a, i) => labelsShown(a) && side(a, i) === where);
     if (edge) {
-      // 第一根纵轴默认在左，同一个 grid 的第二根默认在右
-      const ys = asArray(out.yAxis);
-      const side = (a, i) => a.position || (i === 0 ? "left" : "right");
-      if (!ys.some((a, i) => labelsShown(a) && side(a, i) === "left")) gridBase.left = Math.max(gridBase.left, edge);
-      if (!ys.some((a, i) => labelsShown(a) && side(a, i) === "right")) gridBase.right = Math.max(gridBase.right, edge);
+      if (!labelled("left")) gridBase.left = Math.max(gridBase.left, edge);
+      if (!labelled("right")) gridBase.right = Math.max(gridBase.right, edge);
+    }
+    // 横轴的像素长度：图宽扣掉两边的纵轴文字（大约 40px）或留白。390 宽两天是「9月23日 12:00 9月24日 12:00」，320 宽是「9月23日 9月24日」
+    for (const r of shortTime) {
+      const px = inst.getWidth() - (labelled("left") ? 40 : gridBase.left) - (labelled("right") ? 40 : gridBase.right);
+      r.splitNumber = Math.max(2, Math.min(6, Math.round(px / 85)));
     }
     for (const n of niceAxes) applyNice(n, inst, fs);
     out.grid = Array.isArray(o.grid) ? o.grid.map((g) => merge(gridBase, g)) : merge(gridBase, o.grid);
+    // 图例一行放不下（手机上四五条线）时折成两三行、图往下让出多的行，不用翻页的图例（「‹ 1/2 ›」要点了才看得到后面的，
+    // 也点不到后面那几条的开关）。行数按图宽算，宽度变了跟着变（create 里的 ResizeObserver）。
+    // 页面自己写了 legend.type 或 grid.top 的听页面的；三行都放不下的还是翻页
+    if (inst && showLegend && isPlain(out.legend) && isPlain(out.grid) && !(legendOpt && legendOpt.type) && out.legend.orient !== "vertical" && !(isPlain(o.grid) && o.grid.top != null)) {
+      const names = legendOpt && Array.isArray(legendOpt.data) ? legendOpt.data.map((d) => (isPlain(d) ? d.name : d)) : named.map((s) => s.name);
+      const rows = legendRows([...new Set(names)], out.legend, fs, inst.getWidth());
+      if (rows > 1 && rows <= 3) {
+        out.legend = { ...out.legend, type: "plain", itemGap: LEGEND_WRAP_GAP };
+        out.grid = { ...out.grid, top: out.grid.top + (rows - 1) * (Math.max(out.legend.itemHeight, fs) + LEGEND_WRAP_GAP) };
+      }
+    }
   }
   if (o.visualMap) {
     const vmBase = {
@@ -590,12 +633,12 @@ function draw(inst, opts) {
   const o = build(inst.__tmOption, {}, inst);
   const lg = Array.isArray(o.legend) ? o.legend[0] : o.legend;
   inst.__tmSelected = lg && lg.selected ? { ...lg.selected } : null;
-  inst.__tmAxesKey = axesKey(o);
+  inst.__tmLayoutKey = layoutKey(o);
   inst.setOption(o, opts);
 }
 
-// 随图宽变化的坐标轴设置（nice 刻度、时间轴的 splitNumber）的签名：宽度变了、这些跟着变时才需要重设坐标轴
-function axesKey(o) {
+// 随图宽变化的设置（nice 刻度、时间轴的 splitNumber、图例折成几行）的签名：宽度变了、这些跟着变时才需要重设
+function layoutKey(o) {
   const ks = [];
   for (const k of ["xAxis", "yAxis"]) {
     for (const a of asArray(o[k])) {
@@ -604,6 +647,9 @@ function axesKey(o) {
       if (a.type === "time") ks.push("t" + (a.splitNumber ?? ""));
     }
   }
+  const lg = asArray(o.legend)[0];
+  const g = asArray(o.grid)[0];
+  if (lg && lg.show && g) ks.push(`l${lg.type}:${g.top}`);
   return ks.join("|");
 }
 
@@ -642,14 +688,18 @@ export async function create(el, option, { onClick, renderer = "canvas" } = {}) 
     frame = requestAnimationFrame(() => {
       if (inst.isDisposed()) return;
       inst.resize({ animation: { duration: 0 } });
-      // nice 刻度、时间轴刻度疏密按宽度选：宽度变了、跟着变时只换坐标轴（不用 notMerge，缩放窗口和图例开关都保留）
-      if (inst.__tmAxesKey) {
+      // nice 刻度、时间轴刻度疏密、图例行数按宽度定：宽度变了、跟着变时只换坐标轴、grid 和图例（不用 notMerge，缩放窗口保留）
+      if (inst.__tmLayoutKey) {
         const o = build(inst.__tmOption, {}, inst);
-        const key = axesKey(o);
-        if (key !== inst.__tmAxesKey) {
-          inst.__tmAxesKey = key;
-          // replaceMerge：坐标轴整个换成新的（merge 方式删不掉上一次加的 splitNumber），其它组件和状态不动
-          inst.setOption({ xAxis: o.xAxis, yAxis: o.yAxis }, { replaceMerge: ["xAxis", "yAxis"] });
+        const key = layoutKey(o);
+        if (key !== inst.__tmLayoutKey) {
+          inst.__tmLayoutKey = key;
+          // replaceMerge：这几样整个换成新的（merge 方式删不掉上一次加的 splitNumber，图例从翻页换成折行也得重建），
+          // 其它组件和状态不动；图例重建时把用户点掉的线带过去
+          const next = {};
+          for (const k of ["xAxis", "yAxis", "grid", "legend"]) if (o[k] !== undefined) next[k] = o[k];
+          if (inst.__tmSelected && isPlain(next.legend)) next.legend = { ...next.legend, selected: inst.__tmSelected };
+          inst.setOption(next, { replaceMerge: Object.keys(next) });
         }
       }
     });
@@ -694,14 +744,16 @@ export function timeAxis(extra = {}) {
 // unit 显示在坐标轴顶端；fmt：刻度格式化函数。
 // nice: true —— 两端贴着数据（或给定的 min / max），刻度按图宽挑 1 / 2 / 2.5 / 5 × 10ⁿ 的整数（里程这类数值型 x 轴用）；
 //   pad：两端各留出范围的几分之几（默认 0）
-export function valueAxis({ unit, min, max, fmt: f, name, position, nice, pad, ...rest } = {}) {
+// integer: true —— 值本来就是整数（电量 %）：刻度只落在整数上，65–75% 不会按 2.5 一格出现 67.5%
+export function valueAxis({ unit, min, max, fmt: f, name, position, nice, pad, integer, ...rest } = {}) {
   const a = { type: "value", min, max, splitNumber: 4 };
+  if (integer) a.minInterval = 1;
   // 上下限都定了（比如 0–100%）时自己定刻度间隔，免得出现 0/30/60/90/100 这种挤在一起的最后一格。
-  // 依次试 4、5、3、6 等分，只接受 1 / 2 / 2.5 / 5 × 10ⁿ 的步长、而且 min 落在刻度上（不然会出现 22.5、7.5 这种刻度）。
+  // 依次试 4、5、3、6、2 等分，只接受 1 / 2 / 2.5 / 5 × 10ⁿ 的步长、而且 min 落在刻度上（不然会出现 22.5、7.5 这种刻度）。
   // 都不行时，4 等分是整数、min 也在刻度上的照旧用（状态页 0–24 小时按 6 小时一格）；再不行交给 ECharts
   if (!nice && typeof min === "number" && typeof max === "number" && max > min) {
-    const ok = (step) => isMultiple(min, step);
-    const step = [4, 5, 3, 6].map((n) => (max - min) / n).find((st) => isNiceStep(st) && ok(st));
+    const ok = (step) => isMultiple(min, step) && (!integer || Number.isInteger(step));
+    const step = [4, 5, 3, 6, 2].map((n) => (max - min) / n).find((st) => isNiceStep(st) && ok(st));
     const whole = (max - min) / 4;
     if (step) a.interval = step;
     else if (Number.isInteger(whole) && ok(whole)) a.interval = whole;
@@ -840,14 +892,15 @@ export function zoom({ start, end, xAxisIndex, filterMode } = {}) {
 // 状态时间线（custom series）：items = [{ lane, start, end, color, name, raw }]
 // lane 是 y 轴分类的下标；color 用主题色名；配合 yAxis: categoryAxis([...]) 和 xAxis: timeAxis() 使用。
 // opts.tooltip：(item, p) => HTML（自己负责转义，建议用 tipHtml），item 是传进来的那一项（带 raw）；false 不显示提示框。
-// 默认提示框把 start / end 当毫秒时间；横轴不是时间（比如 0–24 小时）时，在 raw 里放 { start, end }（毫秒）给默认提示框用
+// 默认提示框：状态名、时间段（fmt.period：「9月21日 23:06–次日 02:52」）、时长。它把 start / end 当毫秒时间；
+// 横轴不是时间（比如 0–24 小时）时，在 raw 里放 { start, end }（毫秒）给默认提示框用
 export function timelineSeries(items, { name = "状态", height = 0.6, tooltip: tip } = {}) {
   const defaultTip = (p) => {
     const it = items[p.dataIndex] || {};
     const r = it.raw || {};
     const a = Number.isFinite(r.start) ? r.start : p.value[1];
     const b = Number.isFinite(r.end) ? r.end : p.value[2];
-    return tipHtml(p.name, [{ color: markerColor(p), name: `${fmt.dateTime(a)} – ${fmt.time(b)}`, value: fmt.duration((b - a) / 60e3) }]);
+    return tipHtml(p.name, [{ color: markerColor(p), name: fmt.period(a, b), value: fmt.duration((b - a) / 60e3) }]);
   };
   return {
     type: "custom",

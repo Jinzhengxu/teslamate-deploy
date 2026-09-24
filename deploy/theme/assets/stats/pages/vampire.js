@@ -4,6 +4,7 @@ import * as ui from "../core/ui.js";
 import * as api from "../core/api.js";
 import * as fmt from "../core/format.js";
 import * as chart from "../core/chart.js";
+import { lenDigits, lenText, endTime } from "./_drive-item.js";
 
 export const title = "待机掉电";
 export const range = { default: "90d" };
@@ -18,7 +19,10 @@ const MOBILE = "(max-width: 768px)";
 // 照抄面板：把行程和充电按开始时间排成一串，相邻两次之间（上一次结束 → 这一次开始）就是一次停车。
 // 里程表变化 ≥ 1 km 的（中间有没记录到的行驶）、续航反而涨了的都不算。
 // 天冷时电池可用电量打折（usable < battery_level），估算的续航损失不准，面板把续航相关的列置空，这里一样。
-// 只加了最后的 ORDER BY，数字不变
+// 休眠时间：和这次停车有重叠的休眠 / 离线段都算，截到停车的起止（开进地库时就断了网，离线段从行程里就开始了，也算进来）；
+// 停车时长直接相减（以前的面板用 age()，停了一个多月时按每月 30 天折算，会算错）。
+// SQL 和现在的面板一样，只去掉了面板给链接用的 start_date_ts / end_date_ts 两列、列名去掉了单位后缀
+// （range_diff、range_lost_per_hour，单位由页面按设置写），加了最后的 ORDER BY，数字不变
 const SQL = `
 with merge as (
  SELECT
@@ -64,7 +68,7 @@ v as (
     t.start_\${preferred_range}_range_km AS end_range,
     lag(t.end_km) OVER w AS start_km,
     t.start_km AS end_km,
-    EXTRACT(EPOCH FROM age(t.start_date, lag(t.end_date) OVER w)) AS duration,
+    EXTRACT(EPOCH FROM (t.start_date - lag(t.end_date) OVER w)) AS duration,
     lag(t.end_battery_level) OVER w AS start_battery_level,
     lag(t.end_usable_battery_level) OVER w AS start_usable_battery_level,
     start_battery_level AS end_battery_level,
@@ -78,7 +82,7 @@ SELECT
   v.start_date,
   v.end_date,
   v.duration,
-  (coalesce(s_asleep.sleep, 0) + coalesce(s_offline.sleep, 0)) / v.duration AS standby,
+  coalesce(s_standby.sleep, 0) / v.duration AS standby,
   -greatest(v.start_battery_level - v.end_battery_level, 0) AS soc_diff,
   CASE WHEN has_reduced_range THEN 1 ELSE 0 END AS has_reduced_range,
   convert_km(CASE WHEN has_reduced_range THEN NULL ELSE (v.start_range - v.end_range)::numeric END, '$length_unit') AS range_diff,
@@ -87,15 +91,13 @@ SELECT
   convert_km(CASE WHEN has_reduced_range THEN NULL ELSE ((v.start_range - v.end_range) / (v.duration / 3600))::numeric END, '$length_unit') AS range_lost_per_hour
 FROM v,
   LATERAL (
-    SELECT EXTRACT(EPOCH FROM sum(age(s.end_date, s.start_date))) as sleep
+    SELECT EXTRACT(EPOCH FROM sum(LEAST(s.end_date, v.end_date) - GREATEST(s.start_date, v.start_date))) as sleep
     FROM states s
-    WHERE state = 'asleep' AND v.start_date <= s.start_date AND s.end_date <= v.end_date AND s.car_id = $car_id
-  ) s_asleep,
-  LATERAL (
-    SELECT EXTRACT(EPOCH FROM sum(age(s.end_date, s.start_date))) as sleep
-    FROM states s
-    WHERE state = 'offline' AND v.start_date <= s.start_date AND s.end_date <= v.end_date AND s.car_id = $car_id
-  ) s_offline
+    WHERE state IN ('asleep', 'offline')
+      AND s.start_date < v.end_date
+      AND (s.end_date IS NULL OR s.end_date > v.start_date)
+      AND s.car_id = $car_id
+  ) s_standby
 JOIN cars c ON c.id = $car_id
 WHERE
   v.duration > ($duration * 60 * 60)
@@ -103,13 +105,19 @@ WHERE
   AND v.end_km - v.start_km < 1
 ORDER BY v.start_date DESC`;
 
-// 休眠占比的颜色档照面板：≥ 85% 绿，30%~85% 橙，更低的红
+// 休眠占比的颜色档照面板：≥ 85% 绿，30–85% 橙，更低的红
 function standbyTone(s) {
   return s >= 0.85 ? "green" : s >= 0.3 ? "amber" : "red";
 }
 
-// 里程：≥ 100 取整，< 100 保留 1 位
-const lenD = (v) => (v != null && Math.abs(v) >= 100 ? 0 : 1);
+// 休眠占比（v 是 0–1）：会四舍五入成「0%」的写「<1」，会四舍五入成「100%」的写「>99」（没睡满的停车别写成 100%）。
+// 不带 %：统计卡片的 % 是单独的小字
+function shareNum(v) {
+  const p = v * 100;
+  return p > 0 && p < 0.5 ? "<1" : p >= 99.5 && p < 100 ? ">99" : fmt.num(p, 0);
+}
+
+const shareText = (v) => (v == null ? null : `${shareNum(v)}%`);
 
 export async function render(ctx) {
   const dur = api.oneOf(ctx.query.get("duration"), DURATIONS, "6");
@@ -142,11 +150,12 @@ export async function render(ctx) {
       ${ui.stats(
         [
           { label: "停车次数", icon: "parking", value: rows.length, unit: "次", sub: `累计 ${fmt.duration(s.hours * 60)}` },
-          { label: "休眠占比", icon: "sleep", value: s.standby == null ? null : s.standby * 100, unit: "%", tone: standbyTone(s.standby), sub: "停着时在休眠或离线" },
-          { label: "每天掉续航", icon: "gauge", value: perDay, digits: lenD(perDay), unit: L, sub: s.rangeHours ? `约 ${fmt.kwh(s.kwhPerHour * 24, 1)}` : "天冷，续航不可比" },
+          { label: "休眠占比", icon: "sleep", value: s.standby == null ? null : shareNum(s.standby), unit: "%", tone: standbyTone(s.standby), sub: "停着时在休眠或离线" },
+          { label: "每天掉续航", icon: "gauge", value: perDay, digits: lenDigits(perDay), unit: L, sub: s.rangeHours ? `约 ${fmt.kwh(s.kwhPerHour * 24, 1)}` : "天冷，续航不可比" },
+          // 一天只掉零点几个百分点，取整就成了「0%」，保留一位
           { label: "每天掉电量", icon: "battery-50", value: s.socPerHour == null ? null : s.socPerHour * 24, digits: 1, unit: "%", sub: `共掉了 ${fmt.int(s.soc)}%` },
           // 每小时只掉零点几 km，保留两位才看得出差别
-          { label: "每小时掉续航", icon: "gauge", value: s.kmPerHour, digits: 2, unit: L, sub: s.rangeHours ? `共 ${fmt.len(s.km, lenD(s.km))}` : "" },
+          { label: "每小时掉续航", icon: "gauge", value: s.kmPerHour, digits: 2, unit: L, sub: s.rangeHours ? `共 ${lenText(s.km)}` : "" },
           { label: "平均功率", icon: "lightning-bolt", value: s.rangeHours ? s.kwhPerHour * 1000 : null, unit: "W", sub: s.rangeHours ? `共掉电 ${fmt.kwh(s.kwh, 1)}` : "" }
         ],
         { cols: 3 }
@@ -162,7 +171,7 @@ export async function render(ctx) {
             ? html`${ui.chartBox("vd-chart", { height: 220, heightMobile: 190, label: "每次停车折合每天掉的续航" })}
                 ${ui.legend([
                   { label: "休眠 ≥ 85%", color: "var(--tm-green)" },
-                  { label: "30% ~ 85%", color: "var(--tm-amber)" },
+                  { label: "30–85%", color: "var(--tm-amber)" },
                   { label: "< 30%", color: "var(--tm-red)" }
                 ])}`
             : ui.empty("这几次停车都是天冷的时候，续航损失估不准，画不出来。", { icon: "snowflake" })
@@ -245,29 +254,43 @@ function statesHref(ctx, r) {
   return ctx.href("/stats/states", { r: `${ymd(r.start_date)}-${ymd(r.end_date)}` });
 }
 
-// 结束时刻：同一天只写时刻，第二天写「次日 07:40」，再往后写日期（和充电、时间线的写法一样）
-function endText(start, end) {
-  const day0 = (ms) => new Date(ms).setHours(0, 0, 0, 0);
-  const gap = day0(end) - day0(start);
-  if (gap === 0) return fmt.time(end);
-  if (gap <= 25 * 3600e3) return `次日 ${fmt.time(end)}`;
-  return fmt.dateTime(end);
-}
-
-// 列表标题：开始那天不带星期（手机上右边还有数值列）；时间段放不下时从「–」后面折行，不把「次日」拆开
+// 列表标题（列表行的时间段写法）：开始那天不带星期（手机上右边还有数值列）；
+// 时间段放不下时从「–」后面折行，不把「次日」拆开
 function spanTitle(r) {
-  const d = fmt.day(r.start_date);
-  const day = d === "今天" || d === "昨天" ? d : fmt.dateAuto(r.start_date);
-  return html`<span class="pg-vd-nb">${day} ${fmt.time(r.start_date)}–</span><span class="pg-vd-nb">${endText(r.start_date, r.end_date)}</span>`;
+  return html`<span class="pg-vd-nb">${fmt.shortDay(r.start_date)} ${fmt.time(r.start_date)}–</span><span class="pg-vd-nb">${endTime(r.start_date, r.end_date)}</span>`;
 }
 
-// 续航损失：里程写法（< 100 保留 1 位）
+// 表格、提示框里两头都带日期的时间段：同一天「9月21日 14:05–16:57」，第二天「9月21日 23:06–次日 02:52」，
+// 再往后两头都写日期时间、「–」两边加空格（和旅程页的写法一样）。
+// 分成「–」和它前面、中间的空格、后面三段：提示框里直接接起来，表格里前后两段各自不折行（periodCell）
+function periodParts(a, b) {
+  const days = Math.round((new Date(b).setHours(0, 0, 0, 0) - new Date(a).setHours(0, 0, 0, 0)) / 86400e3);
+  if (days <= 1) return [`${fmt.dateAuto(a)} ${fmt.time(a)}–`, "", endTime(a, b)];
+  // 结束那头同一年不再写年份；跨年时写上，不然「2025年12月30日 20:00 – 1月2日 08:00」像是倒着的
+  const endDay = new Date(a).getFullYear() === new Date(b).getFullYear() ? fmt.date(b) : fmt.dateY(b);
+  return [`${fmt.dateTime(a)} –`, " ", `${endDay} ${fmt.time(b)}`];
+}
+
+const period = (a, b) => periodParts(a, b).join("");
+
+// 表格的时间列：平板上放不下时从「–」后面折成两行（不把日期、「次日」拆开），把宽度让给右边的数值列，
+// 免得最后一列要横向滚动才看得到
+function periodCell(a, b) {
+  const [head, gap, tail] = periodParts(a, b);
+  return html`<span class="pg-vd-nb">${head}</span>${gap}<span class="pg-vd-nb">${tail}</span>`;
+}
+
+// 续航损失：按距离的位数，掉了写「−」（减号，不是连字符）。
+// 按写出来的数判断：掉了不到 0.05 km 的写成「0.0 km」，不带负号
 function lossText(r) {
-  return r.range_diff == null ? null : r.range_diff > 0 ? `-${fmt.len(r.range_diff, lenD(r.range_diff))}` : fmt.len(0, 1);
+  if (r.range_diff == null) return null;
+  const t = lenText(r.range_diff);
+  return t === lenText(0) ? t : `−${t}`;
 }
 
+// 电量变化（soc_diff 是 0 或负数）：掉了写「−2%」，没掉写「0%」
 function socText(r) {
-  return r.soc_diff ? `${fmt.int(r.soc_diff)}%` : "0%";
+  return r.soc_diff ? `−${fmt.int(-r.soc_diff)}%` : "0%";
 }
 
 function coldPill() {
@@ -281,7 +304,8 @@ function listItem(ctx, r) {
     icon: "sleep",
     tone: standbyTone(r.standby),
     title: spanTitle(r),
-    sub: ui.segs([`停 ${fmt.duration(r.duration / 60)}`, `休眠 ${fmt.pct(r.standby * 100)}`]),
+    // 放不下时藏「休眠」：图标的颜色就是休眠占比的档
+    sub: ui.fit([`停 ${fmt.duration(r.duration / 60)}`, `休眠 ${shareText(r.standby)}`], { sep: true }),
     // 平均功率和「每小时掉的续航」成正比，放不下时先藏它
     meta: cold ? coldPill() : ui.fit([`每小时 ${fmt.len(r.range_lost_per_hour, 2)}`, fmt.kwh(r.consumption, 1), `${fmt.int(r.avg_power)} W`], { sep: true }),
     value: cold ? socText(r) : lossText(r),
@@ -296,9 +320,9 @@ function rowsTable(ctx, rows) {
     rowHref: (r) => statesHref(ctx, r),
     rows,
     columns: [
-      { key: "start_date", label: "时间", fmt: (v, r) => `${fmt.dateTime(v)}–${endText(v, r.end_date)}`, primary: true },
+      { key: "start_date", label: "时间", fmt: (v, r) => periodCell(v, r.end_date), primary: true, wrap: true },
       { key: "duration", label: "时长", align: "right", fmt: (v) => fmt.duration(v / 60) },
-      { key: "standby", label: "休眠", align: "right", fmt: (v) => html`<span class="tm-tone-${standbyTone(v)} tm-strong">${fmt.pct(v * 100)}</span>` },
+      { key: "standby", label: "休眠", align: "right", fmt: (v) => html`<span class="tm-tone-${standbyTone(v)} tm-strong">${shareText(v)}</span>` },
       { key: "soc_diff", label: "电量", align: "right", fmt: (v, r) => socText(r) },
       { key: "range_diff", label: "续航损失", align: "right", fmt: (v, r) => (v == null ? coldPill() : lossText(r)) },
       { key: "consumption", label: "掉电", align: "right", fmt: (v) => (v == null ? "" : fmt.kwh(v, 1)) },
@@ -320,12 +344,13 @@ async function drawChart(ctx, rows) {
       const r = p && asc[p.dataIndex];
       if (!r) return "";
       const perDay = r.range_lost_per_hour * 24;
-      return chart.tipHtml(`${fmt.dateTime(r.start_date)}–${endText(r.start_date, r.end_date)}`, [
-        { color: p.color, name: "折合每天", value: fmt.len(perDay, lenD(perDay)) },
+      return chart.tipHtml(period(r.start_date, r.end_date), [
+        { color: p.color, name: "折合每天", value: lenText(perDay) },
         { name: "停车", value: fmt.duration(r.duration / 60) },
-        { name: "掉了", value: `${fmt.len(r.range_diff, lenD(r.range_diff))} · ${socText(r)}` },
+        // 名字已经说了「掉了」，数字不再带负号
+        { name: "掉了", value: `${lenText(r.range_diff)} · ${fmt.pct(-r.soc_diff)}` },
         { name: "平均功率", value: `${fmt.int(r.avg_power)} W` },
-        { name: "休眠", value: fmt.pct(r.standby * 100) }
+        { name: "休眠", value: shareText(r.standby) }
       ]);
     }),
     // 每次停车一个点（放在这次停车的中点），颜色按休眠占比。几十上百次停车画成柱子在手机上会挤成条形码

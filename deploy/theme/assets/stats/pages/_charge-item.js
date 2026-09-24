@@ -5,8 +5,8 @@
  *   chargeItem(row, ctx, { date })                          一行 → ui.list 的一项
  *   groupByDay(rows)                                        按本地日期分组（充电列表的「今天 / 昨天 / 9月22日 周一」）
  *   chargeKind(row)                                         { label: 慢充 / 快充 / 超充, tone, icon }
- *   chargeState(row, now?)                                  "done" 已结束 / "charging" 正在充 / "incomplete" 中途断掉、没有结束
- *   spanText(start, end)                                    「23:06–次日 02:52」这种时间段写法（详情页也用）
+ *   spanText(start, end)                                    「23:06–次日 02:52」这种时间段写法（详情页也用），还没结束的只写开始时刻
+ * 没结束的充电是正在充还是中途断掉，用 _shared.js 的 chargeState（和行程、首页、时间线同一个口径）。
  *
  * where 是额外的 WHERE 条件片段，可以用这些表别名：
  *   cp 充电（charging_processes）、a 地址（addresses）、g 地理围栏（geofences）、p 插枪时的位置点（positions）
@@ -21,16 +21,12 @@
  *   outside_temp（°C/°F，平均）, odometer（km/mi）, power_avg（kW，充入 ÷ 时长）, power_max（kW）,
  *   charge_type（'AC' | 'DC'，和面板一样按相数的众数判断）, supercharger（特斯拉超充，布尔）,
  *   incomplete（没有结束的充电：正在充，或者 TeslaMate 在充电中途停过；这时时长、电量、充入量取已记录的部分）,
- *   last_date、last_power（只有没结束的充电有：最后一条 charges 记录的时间和功率 kW，判断是不是还在充）
+ *   last_date、last_power（只有没结束的充电有：最后一条 charges 记录的时间和功率 kW；chargeState 按 last_date 判断是不是还在充）
  */
 import { html } from "../core/ui.js";
 import * as ui from "../core/ui.js";
 import * as fmt from "../core/format.js";
-import { placeSql, UNKNOWN_PLACE } from "./_shared.js";
-
-// 没结束的充电，最后一条记录在这么多分钟之内就算「正在充」，再久就是中途断掉了
-// （TeslaMate 充电时交流约 1 分钟、直流十几秒记一条）
-export const LIVE_MIN = 10;
+import { placeSql, UNKNOWN_PLACE, chargeState, statePill } from "./_shared.js";
 
 export function CHARGE_ITEM_SQL(where, { limit, offset, incomplete = false, empty = false } = {}) {
   const cond = where && String(where).trim() ? `(${where})` : "true";
@@ -92,37 +88,11 @@ export function chargeKind(row) {
   return { label: "快充", tone: "amber", icon: "lightning-bolt" };
 }
 
-// 没有结束时间的充电分两种：最后一条记录（一条都还没有时看开始时间）在 LIVE_MIN 分钟内的是正在充，
-// 很久没有新记录的是 TeslaMate 中途停过、再也不会结束的
-export function chargeState(row, now = Date.now()) {
-  if (row.end_date != null && !row.incomplete) return "done";
-  const last = row.last_date ?? row.start_date;
-  return last != null && now - last <= LIVE_MIN * 60e3 ? "charging" : "incomplete";
-}
-
-function dayStart(ms) {
-  const d = new Date(ms);
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-}
-
-// 结束时刻：同一天只写时刻，第二天写「次日 02:52」，再往后写日期（和时间线一样）
-function endText(start, end) {
-  if (dayStart(end) === dayStart(start)) return fmt.time(end);
-  // 夏令时那天一天是 25 小时
-  if (dayStart(end) - dayStart(start) <= 25 * 3600e3) return `次日 ${fmt.time(end)}`;
-  return fmt.dateTime(end);
-}
-
-// 「18:09–20:21」「23:06–次日 02:52」
+// 「18:09–20:21」「23:06–次日 02:52」：和行程同一个写法（fmt.timeSpan）。
+// 刚开始充、还没有记录时没有结束的那一头，只写开始时刻
 export function spanText(start, end) {
   if (start == null) return null;
-  return end == null ? fmt.time(start) : `${fmt.time(start)}–${endText(start, end)}`;
-}
-
-// 今天 / 昨天 / 9月22日（列表里不带星期，省地方；和行程列表一致）
-function shortDay(ms) {
-  const d = fmt.day(ms);
-  return d === "今天" || d === "昨天" ? d : fmt.dateAuto(ms);
+  return end == null ? fmt.time(start) : fmt.timeSpan(start, end);
 }
 
 // 电量变化，列表里的紧凑写法「72→90%」
@@ -133,15 +103,16 @@ function socText(row) {
 // opts.date：副标题里带不带日期。按天分组的列表（组头已经有日期）传 false
 export function chargeItem(row, ctx, { date = true } = {}) {
   const href = ctx.href(`/stats/charges/${row.id}`);
-  const when = date ? `${shortDay(row.start_date)} ` : "";
+  const when = date ? `${fmt.shortDay(row.start_date)} ` : "";
   const title = row.place || UNKNOWN_PLACE;
   const soc = socText(row);
   const socHtml = soc ? html`<span class="tm-num">${soc}</span>` : "";
   const state = chargeState(row);
+  const kind = chargeKind(row);
 
+  // 没结束的两种：正在充（慢 / 快充的图标，绿色）、中途断掉（警告图标，琥珀色）；时长都只算到最后一条记录
   if (state !== "done") {
     const live = state === "charging";
-    const kind = chargeKind(row);
     return {
       href,
       icon: live ? kind.icon : "alert-circle-outline",
@@ -152,14 +123,13 @@ export function chargeItem(row, ctx, { date = true } = {}) {
         `${when}${fmt.time(row.start_date)} 开始`,
         row.duration_min > 0 && `${live ? "已充" : "记录了"} ${fmt.duration(row.duration_min)}`
       ]),
-      meta: html`${ui.pill(live ? "充电中" : "未完成", live ? "green" : "amber")}${socHtml}`,
+      meta: html`${statePill(state)}${socHtml}`,
       value: row.energy_added != null ? fmt.kwh(row.energy_added, 1) : null,
       // 正在充时右下角是此刻的功率
       valueSub: live && row.last_power > 0 ? fmt.kw(row.last_power) : null
     };
   }
 
-  const kind = chargeKind(row);
   // 最大功率放进类型标签里（「慢充 7 kW」「超充 251 kW」）：手机上一行放得下，也一眼看出是什么桩
   const peak = row.power_max > 0 ? ` ${fmt.kw(row.power_max)}` : "";
 
@@ -175,6 +145,11 @@ export function chargeItem(row, ctx, { date = true } = {}) {
     // 费用为空很常见（公共桩没填、TeslaMate 没配单价），写明「未计费」比一个「—」好懂
     valueSub: row.cost != null ? fmt.money(row.cost) : "未计费"
   };
+}
+
+function dayStart(ms) {
+  const d = new Date(ms);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 }
 
 // 按充电开始的本地日期分组，保持 rows 原来的顺序（一般是倒序）。

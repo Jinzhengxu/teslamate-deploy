@@ -4,7 +4,7 @@ import * as ui from "../core/ui.js";
 import * as api from "../core/api.js";
 import * as fmt from "../core/format.js";
 import * as chart from "../core/chart.js";
-import { placeSql } from "./_shared.js";
+import { lenDigits, lenText } from "./_drive-item.js";
 
 export const title = "驾驶统计";
 export const range = { default: "1y" };
@@ -81,11 +81,12 @@ WHERE speed_section > 0
 GROUP BY speed_section
 ORDER BY speed_section`;
 
-// 前 10 个目的地。地名统一用 placeSql（围栏名优先；中文路名和门牌之间不加空格），
+// 前 10 个目的地。地名和面板一样：围栏名 → 地址自己的名字 → 路名门牌（中文路名和门牌之间不加空格，和 placeSql 一致）。
+// 不像 placeSql 那样再退到街道 / 区县：那样几处不同的地方会并成一个「龙洞街道」挤进前 10。
 // 面板的 exclude 文本框默认为空，只起到「去掉没有名字的地址」的作用，这里照做
 const TOP_SQL = `
 SELECT name, visited FROM (
-  SELECT ${placeSql("g", "a")} AS name, count(*) AS visited
+  SELECT COALESCE(g.name, a.name, NULLIF(CONCAT(a.road, a.house_number), '')) AS name, count(*) AS visited
   FROM drives t
   INNER JOIN addresses a ON t.end_address_id = a.id
   LEFT JOIN geofences g ON t.end_geofence_id = g.id
@@ -95,9 +96,6 @@ SELECT name, visited FROM (
 WHERE name IS NOT NULL AND name <> ''
 ORDER BY visited DESC, name
 LIMIT 10`;
-
-// 里程：≥ 100 取整，< 100 保留 1 位
-const lenD = (v) => (v != null && Math.abs(v) >= 100 ? 0 : 1);
 
 export async function render(ctx) {
   ui.render(ctx.root, ui.skeleton(["stats", "chart", "chart"]));
@@ -148,10 +146,11 @@ export async function render(ctx) {
     html`
       ${ui.stats([
         { label: "行程次数", icon: "map-marker-path", value: total.n, unit: "次", sub: `平均每天 ${fmt.num(total.n / nDays, 1)} 次` },
-        { label: "总里程", icon: "road-variant", value: total.dist, digits: lenD(total.dist), unit: L, sub: `平均每次 ${fmt.len(avgDist, lenD(avgDist))}` },
-        { label: "总耗电（净）", icon: "lightning-bolt", value: total.energy, digits: 1, unit: "kWh", sub: "按掉的续航折算" },
-        { label: "单次中位距离", icon: "map-marker-distance", value: median, digits: lenD(median), unit: L, sub: "一半的行程比这短" },
-        { label: "日均里程", icon: "road-variant", value: dayDist, digits: lenD(dayDist), unit: L, sub: `按 ${fmt.int(nDays)} 天平均` },
+        { label: "总里程", icon: "road-variant", value: total.dist, digits: lenDigits(total.dist), unit: L, sub: `平均每次 ${lenText(avgDist)}` },
+        // 上万度时取整：320 宽的格子里「12,345.6 kWh」放不下
+        { label: "总耗电（净）", icon: "lightning-bolt", value: total.energy, digits: total.energy >= 10000 ? 0 : 1, unit: "kWh", sub: "按掉的续航折算" },
+        { label: "单次中位距离", icon: "map-marker-distance", value: median, digits: lenDigits(median), unit: L, sub: "一半的行程比这短" },
+        { label: "日均里程", icon: "road-variant", value: dayDist, digits: lenDigits(dayDist), unit: L, sub: `按 ${fmt.int(nDays)} 天平均` },
         { label: "日均耗电", icon: "lightning-bolt", value: total.energy / nDays, digits: 1, unit: "kWh", sub: "没开车的天算 0" },
         {
           label: "最高速度",
@@ -164,9 +163,9 @@ export async function render(ctx) {
           label: "预计年里程",
           icon: "road-variant",
           value: monthly == null ? null : monthly * 12,
-          digits: lenD(monthly * 12),
+          digits: lenDigits(monthly * 12),
           unit: L,
-          sub: monthly == null ? null : `每月约 ${fmt.len(monthly, lenD(monthly))}`
+          sub: monthly == null ? null : `每月约 ${lenText(monthly)}`
         }
       ])}
 
@@ -181,7 +180,7 @@ export async function render(ctx) {
             hist.length
               ? html`${ui.chartBox("ds-hist", { height: 240, heightMobile: 210, label: "各车速档所占的驾驶时间" })}
                   ${histNote(hist)}`
-              : ui.empty("这段时间没有可用的车速记录。", { icon: "speedometer" })
+              : ui.empty(`${ctx.range.label}没有可用的车速记录。`, { icon: "speedometer" })
           ),
           { sub: `横轴是车速（${fmt.unit.speed}，10 一档），纵轴是占驾驶时间的比例` }
         )}
@@ -190,7 +189,7 @@ export async function render(ctx) {
           ui.card(
             top.length
               ? ui.rank(top.map((r) => ({ name: r.name, value: r.visited })), { unit: "次", shown: 0 })
-              : ui.empty("这段时间没有记录到目的地。", { icon: "map-marker" })
+              : ui.empty(`${ctx.range.label}没有记录到目的地。`, { icon: "map-marker" })
           ),
           { sub: "按到达次数排的前 10 个目的地", id: "pg-ds-top" }
         )}
@@ -204,11 +203,6 @@ export async function render(ctx) {
 function allButton(ctx) {
   if (ctx.range.key === "all") return null;
   return ui.button("查看全部时间", { href: ctx.href("/stats/driving", { r: "all" }), kind: "soft" });
-}
-
-// 占比：取整；不到 1% 的档写「<1%」，免得显示成 0%
-function share(v) {
-  return v > 0 && v < 0.5 ? "<1%" : fmt.pct(v);
 }
 
 // ---------------------------------------------------------------- 里程走势
@@ -246,7 +240,7 @@ async function drawTrend(ctx, trend, kind, span) {
       const b = p && trend[p.dataIndex];
       if (!b) return "";
       return chart.tipHtml(trendTitle(b, kind), [
-        { color: p.color, name: "里程", value: fmt.len(b.dist, lenD(b.dist)) },
+        { color: p.color, name: "里程", value: lenText(b.dist) },
         { name: "行程", value: `${fmt.int(b.n)} 次` },
         { name: "耗电（净）", value: fmt.kwh(b.energy, 1) }
       ]);
@@ -260,13 +254,7 @@ async function drawTrend(ctx, trend, kind, span) {
 function histNote(hist) {
   const peak = hist.reduce((a, b) => (b.pct > a.pct ? b : a), hist[0]);
   const secs = hist.reduce((s, r) => s + r.secs, 0);
-  return html`<p class="tm-note pg-ds-note">最常开 <strong class="tm-strong">${fmt.speed(peak.speed)}</strong> 左右，占 ${share(peak.pct)}；<span class="pg-ds-nb">共统计了 ${hoursText(secs)}的驾驶。</span></p>`;
-}
-
-// 驾驶时间按小时说（「2天5小时」容易被读成日历上的两天）
-function hoursText(secs) {
-  const h = secs / 3600;
-  return h < 1 ? fmt.duration(secs / 60) : `${fmt.num(h, h < 10 ? 1 : 0)} 小时`;
+  return html`<p class="tm-note pg-ds-note">最常开 <strong class="tm-strong">${fmt.speed(peak.speed)}</strong> 左右，占 ${fmt.share(peak.pct)}；<span class="pg-ds-nb">共统计了 ${fmt.hours(secs / 60)}的驾驶。</span></p>`;
 }
 
 async function drawHist(ctx, hist) {
@@ -280,8 +268,8 @@ async function drawHist(ctx, hist) {
       const r = p && hist[p.dataIndex];
       if (!r) return "";
       return chart.tipHtml(`${fmt.num(r.speed)} ${u} 左右（${fmt.num(r.speed - 5)}–${fmt.num(r.speed + 5)}）`, [
-        { color: p.color, name: "占驾驶时间", value: share(r.pct) },
-        { name: "累计", value: hoursText(r.secs) }
+        { color: p.color, name: "占驾驶时间", value: fmt.share(r.pct) },
+        { name: "累计", value: fmt.hours(r.secs / 60) }
       ]);
     }),
     series: [chart.bars("占比", hist.map((r) => +r.pct.toFixed(2)), { color: "c1", width: 22 })]

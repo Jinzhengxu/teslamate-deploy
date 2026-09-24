@@ -12,7 +12,8 @@ export const title = "地点";
 export const range = { default: "1y" };
 export const css = true;
 
-const FIRST = 10;
+// 最近到访、地址两张列表每次显示几条（查询最多取 100 条，都在手上）
+const PAGE = 10;
 
 // ---------------------------------------------------------------- SQL（改编自面板，数字口径不变）
 
@@ -39,7 +40,8 @@ chg as (
   from charging_processes where car_id = $car_id and ($__timeFilter(start_date) or $__timeFilter(end_date)) group by 1
 )`;
 
-const Q = {
+// addr：搜索词的 ilike 模式（api.like 的结果），没有搜索词时是「%%」，和面板一样也会滤掉 display_name 为空的地址
+const queries = (addr) => ({
   // 面板「# of Addresses / Cities / States / Countries」
   counts: `select count(*) as addresses, count(distinct city) as cities, count(distinct state) as states, count(distinct country) as countries
 from addresses where id in (${ADDRESS_IDS})`,
@@ -87,7 +89,7 @@ select max(l.end_date) as date,
 from locations l
 inner join addresses a on l.address_id = a.id
 left join geofences g on l.geofence_id = g.id
-where (a.display_name ilike '$addr' or g.name ilike '$addr')
+where (a.display_name ilike ${addr} or g.name ilike ${addr})
 group by 2, 3
 order by 1 desc
 limit 100`,
@@ -105,28 +107,16 @@ from addresses a
 left join arr on arr.id = a.id
 left join chg on chg.id = a.id
 left join geofences g on g.id = coalesce(arr.gid, chg.gid)
-where a.display_name ilike '$addr' and a.id in (${ADDRESS_IDS})
+where a.display_name ilike ${addr} and a.id in (${ADDRESS_IDS})
 order by coalesce(arr.n, 0) desc, coalesce(chg.n, 0) desc, a.inserted_at desc
 limit 100`
-};
+});
 
 // ---------------------------------------------------------------- 小工具
 
-// 搜索词 → ilike 模式。% 和 _ 按字面匹配；单引号由变量替换加倍（不直接拼进 SQL）
-function likePattern(text) {
-  return "%" + text.replace(/[\\%_]/g, "\\$&") + "%";
-}
-
-// 排行：名字 + 个数 + 横条
-function ranking(rows, tone, unit) {
-  if (!rows.length) return ui.empty("没有数据。");
-  const max = rows[0].n;
-  return html`<div class="pg-loc-rank">${rows.map(
-    (x) => html`<div class="pg-loc-rank-row">
-      <div class="tm-between tm-small"><span class="tm-strong tm-truncate">${x.name}</span><span class="tm-num tm-muted">${fmt.int(x.n)} ${unit}</span></div>
-      ${ui.bar(x.n, max, tone)}
-    </div>`
-  )}</div>`;
+// 城市、省份排行（面板只取前 10 个，全部显示）
+function ranking(rows, tone, empty) {
+  return ui.rank(rows.map((x) => ({ name: x.name, value: x.n })), { tone, unit: "个地址", shown: 0, empty });
 }
 
 // 行程页的地点筛选链接。地名只进 URL 查询参数（路径是固定的，URLSearchParams 会编码），不会变成可执行的链接
@@ -138,14 +128,20 @@ function drivesHref(ctx, { geofenceId, place }) {
   return ctx.href("/stats/drives", q);
 }
 
-// 一张可以「显示更多」的列表：先 FIRST 条，点按钮全部展开
-function expandable(id, items, empty) {
-  if (!items.length) return ui.card(ui.empty(empty, { icon: "magnify" }));
-  return html`${ui.card(html`<div id="${id}">${ui.list(items.slice(0, FIRST))}</div>`, { pad: false })}${
-    items.length > FIRST
-      ? html`<div class="pg-loc-more">${ui.button(`显示全部 ${items.length} 个`, { kind: "soft", attrs: { "data-expand": id } })}</div>`
-      : ""
-  }`;
+// 列表的占位：有数据时是给 pager 的空容器（render 之后 drawList 填），没有时直接是空状态
+function listBox(id, items, empty) {
+  return items.length ? html`<div id="${id}"></div>` : ui.card(ui.empty(empty, { icon: "magnify" }));
+}
+
+// 先 PAGE 条，「再显示」往下加；卡片带 data-tm-append，下一页的行并进同一张卡片
+function drawList(el, items, noun) {
+  if (!el) return;
+  ui.pager(el, {
+    total: items.length,
+    page: PAGE,
+    noun,
+    load: (offset) => ui.card(ui.list(items.slice(offset, offset + PAGE)), { pad: false, attrs: { "data-tm-append": "list" } })
+  });
 }
 
 // ---------------------------------------------------------------- 页面
@@ -156,7 +152,7 @@ export async function render(ctx) {
 
   ui.render(ctx.root, ui.skeleton(["stats", "list"]));
 
-  const d = await api.batch(Q, { signal: ctx.signal, vars: { addr: likePattern(text) } });
+  const d = await api.batch(queries(api.like(text)), { signal: ctx.signal });
   const c = d.counts[0] || {};
 
   if (!c.addresses && !d.geofences.length) {
@@ -177,10 +173,9 @@ export async function render(ctx) {
     href: drivesHref(ctx, { geofenceId: x.geofence_id, place: x.place }),
     icon: x.geofence_id != null ? "home-map-marker" : "map-marker",
     tone: x.geofence_id != null ? "accent" : null,
-    // 「山姆会员商店(济南高新店), 工业南路 57号」一行放不下，最多两行（和行程列表的标题一样）
-    title: html`<span class="pg-loc-title">${x.address || UNKNOWN_PLACE}</span>`,
+    title: x.address || UNKNOWN_PLACE,
     // 右边已经是「6小时前 / 9月13日」，副标题只补具体几点，不再重复日期
-    sub: [x.city, fmt.time(x.date)].filter(Boolean).join(" · "),
+    sub: ui.fit([x.city, fmt.time(x.date)], { sep: true }),
     value: fmt.rel(x.date)
   }));
 
@@ -188,8 +183,9 @@ export async function render(ctx) {
   const addressItems = d.addresses.map((x) => {
     // 名字：面板的写法（地名，没有就「路名 门牌」）；门牌也没有时用街道 / 城市兜底
     const name = (x.name || "").trim() || x.neighbourhood || x.city || UNKNOWN_PLACE;
-    // 范围内只有一个国家时不写国家（每行都是「中国」，还把前面的街道挤没了）
-    const where = [x.neighbourhood, x.city, x.state !== x.city ? x.state : null, oneCountry ? null : x.country].filter(Boolean).join(" · ");
+    // 范围内只有一个国家时不写国家（每行都是「中国」，还把前面的街道挤没了）；名字就是街道 / 城市时不再重复它。
+    // 窄屏上一行放不下时从后往前整项藏
+    const where = [x.neighbourhood, x.city, x.state !== x.city ? x.state : null, oneCountry ? null : x.country].filter((v) => v && v !== name);
     const drives = drivesHref(ctx, { geofenceId: x.geofence_id, place: (x.name || "").trim() || null });
     const links = html`${drives ? html`<a class="pg-loc-link" href="${drives}">相关行程</a>` : ""}${
       x.geofence_id != null
@@ -202,7 +198,7 @@ export async function render(ctx) {
     return {
       icon: "map-marker",
       title: name,
-      sub: where || null,
+      sub: where.length ? ui.fit(where, { sep: true }) : null,
       meta: links,
       value: x.arrivals ? `${fmt.int(x.arrivals)} 次` : x.charges ? `充电 ${fmt.int(x.charges)}` : "—",
       valueSub: x.arrivals ? (x.charges ? `到达 · 充电 ${fmt.int(x.charges)}` : "到达") : null
@@ -234,9 +230,11 @@ export async function render(ctx) {
       )}
 
       <div class="tm-grid-2">
-        ${ui.section("城市", ui.card(ranking(d.cities, "green", "个地址")), { sub: d.cities.length >= 10 ? "按到过的地址数，前 10 个" : "按到过的地址数" })}
+        ${ui.section("城市", ui.card(ranking(d.cities, "green", "这段时间没有城市记录。")), {
+          sub: d.cities.length >= 10 ? "按到过的地址数，前 10 个" : "按到过的地址数"
+        })}
         <div class="tm-stack pg-loc-col">
-          ${ui.section("省份", ui.card(ranking(d.states, "amber", "个地址")), { sub: "按到过的地址数" })}
+          ${ui.section("省份", ui.card(ranking(d.states, "amber", "这段时间没有省份记录。")), { sub: "按到过的地址数" })}
           ${ui.section(
             "收藏点",
             d.geofences.length
@@ -248,33 +246,29 @@ export async function render(ctx) {
       </div>
 
       <form class="pg-loc-search" role="search" id="pg-loc-search">
-        <input class="tm-input" type="search" name="q" value="${text}" placeholder="搜索地址，如 万达" enterkeyhint="search" autocomplete="off" aria-label="搜索地址">
-        <button type="submit" class="tm-btn is-primary">${ui.icon("magnify")}<span>搜索</span></button>
+        <span class="tm-search">
+          ${ui.icon("magnify")}
+          <input class="tm-input" type="search" name="q" value="${text}" maxlength="60" placeholder="搜索地址，如 万达" enterkeyhint="search" autocomplete="off" aria-label="搜索地址">
+        </span>
+        <button type="submit" class="tm-btn is-primary">搜索</button>
       </form>
       ${text
         ? html`<p class="tm-note pg-loc-filter">「${text}」：最近到访 ${d.recent.length} 处，地址 ${d.addresses.length} 个 · <a href="${ctx.href("/stats/locations", { q: null })}">清除搜索</a></p>`
         : ""}
 
-      <div class="tm-grid-2 pg-loc-lists">
+      <div class="tm-grid-2">
         ${ui.section(
           "最近到访",
-          expandable("pg-loc-recent", recentItems, text ? "没有匹配的地点。" : "这段时间没有到达记录。"),
+          listBox("pg-loc-recent", recentItems, text ? "没有匹配的地点。" : "这段时间没有到达记录。"),
           { sub: "点一下看去过这里的行程" }
         )}
-        ${ui.section("地址", expandable("pg-loc-addr", addressItems, text ? "没有匹配的地址。" : "这段时间没有地址。"), { sub: "按到达次数排序" })}
+        ${ui.section("地址", listBox("pg-loc-addr", addressItems, text ? "没有匹配的地址。" : "这段时间没有地址。"), { sub: "按到达次数排序" })}
       </div>
     `
   );
 
-  // 展开「显示全部」
-  const lists = { "pg-loc-recent": recentItems, "pg-loc-addr": addressItems };
-  ctx.root.addEventListener("click", (e) => {
-    const b = e.target.closest("[data-expand]");
-    if (!b) return;
-    const id = b.dataset.expand;
-    ui.render(ctx.root.querySelector("#" + id), ui.list(lists[id]));
-    b.parentElement.remove();
-  });
+  drawList(ctx.root.querySelector("#pg-loc-recent"), recentItems, "个地点");
+  drawList(ctx.root.querySelector("#pg-loc-addr"), addressItems, "个地址");
 
   // 搜索：写进 URL（可以分享、后退），整页按新条件重查
   ctx.root.querySelector("#pg-loc-search").addEventListener("submit", (e) => {

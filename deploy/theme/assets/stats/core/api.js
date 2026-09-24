@@ -240,7 +240,7 @@ export function frameToRows(frame) {
   // （比如两个 n，labels 分别是 {metric:"1"}、{metric:"2"}）：这时键名写成「n 1」「n 2」，不然后一列会盖掉前一列
   const names = fields.map((f) => f.name);
   const keys = [];
-  fields.forEach((f, j) => {
+  fields.forEach((f) => {
     const dup = names.indexOf(f.name) !== names.lastIndexOf(f.name);
     const lv = f.labels ? Object.values(f.labels).join(" ") : "";
     let k = dup && lv ? `${f.name} ${lv}` : f.name;

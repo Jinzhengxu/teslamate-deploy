@@ -11,11 +11,6 @@
   margin-top: 4px;
 }
 
-/* 最近行程 / 最近充电并排时高度不一样：多出来的高度给卡片（两张卡片底边对齐），标题行保持原高 */
-.pg-home-data .tm-grid-2 > .tm-section {
-  grid-template-rows: auto 1fr;
-}
-
 /* 数据块后面的入口分组：和分组之间的间距一致（公共样式只给相邻的 .tm-section 加） */
 .pg-home-slot + .tm-section {
   margin-top: 12px;
@@ -100,6 +95,32 @@
   margin-top: 2px;
   color: var(--tm-text-hint);
   font-size: 12px;
+}
+
+/* 正在充电 / 行驶的状态行：夹在车名和四格数字之间，整行是链接。颜色只靠「充电中 / 行驶中」标签，文字用次要色 */
+.pg-home-live {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--tm-line);
+  color: var(--tm-text-2);
+  /* 和列表行的副标题一样大 */
+  font-size: 13px;
+  transition: background-color 0.12s;
+}
+
+.pg-home-live:hover,
+.pg-home-live:active {
+  background: var(--tm-surface-2);
+}
+
+/* 卡片裁掉了溢出，焦点框画在里面 */
+.pg-home-live:focus-visible,
+a.pg-home-fact:focus-visible {
+  outline-offset: -2px;
 }
 
 .pg-home-facts {
@@ -200,9 +221,12 @@ a.pg-home-fact:active {
 
 /* ---------------------------------------------------------------- 电池小卡 */
 
+/* 桌面上和概况卡片并排、被拉高时（正在充电 / 行驶多了一行状态），多出来的高度平分到各块之间：
+   标题贴顶、说明贴底，不在进度条和说明之间空出一大段 */
 .pg-home-batt {
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
   gap: 10px;
   min-width: 0;
   padding: 14px 16px 14px;
@@ -259,33 +283,6 @@ a.pg-home-fact:active {
   white-space: nowrap;
 }
 
-/* 「新车 544 km · 少 19 km」在 320 宽下一行放不下：按段折行，每段不拆开。
-   段前的「·」画在段左边的空里，整排左移、外层裁掉，换到行首的那段就不带「·」 */
-.pg-home-batt-cell .pg-home-fact-sub {
-  overflow: hidden;
-  white-space: normal;
-}
-
-.pg-home-segs {
-  display: flex;
-  flex-wrap: wrap;
-  margin-left: -14px;
-}
-
-.pg-home-segs > span {
-  position: relative;
-  margin-left: 14px;
-  white-space: nowrap;
-}
-
-.pg-home-segs > span::before {
-  content: "·";
-  position: absolute;
-  left: -14px;
-  width: 14px;
-  text-align: center;
-}
-
 .pg-home-batt-note {
   color: var(--tm-text-hint);
   font-size: 12px;
@@ -310,60 +307,9 @@ a.pg-home-fact:active {
   color: var(--tm-amber-text);
 }
 
-/* ---------------------------------------------------------------- 统计页入口 */
-
-/* 公共样式里入口说明是单行省略，320 宽下「把一段时间里的行程和充电连起来看」这几条会被截掉：允许折成两行 */
-.pg-home-entries .tm-entry-desc {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  white-space: normal;
-}
-
 /* ---------------------------------------------------------------- Grafana 原版面板（折叠） */
 
+/* 跟在最后一组入口后面：和入口分组之间的间距一致（公共样式只给相邻的 .tm-section 加） */
 .pg-home-grafana {
   margin-top: 12px;
-  overflow: hidden;
-}
-
-.pg-home-grafana summary {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 64px;
-  padding: 11px 16px;
-  list-style: none;
-  cursor: pointer;
-  transition: background-color 0.12s;
-}
-
-.pg-home-grafana summary::-webkit-details-marker {
-  display: none;
-}
-
-.pg-home-grafana summary:hover {
-  background: var(--tm-surface-2);
-}
-
-.pg-home-grafana summary .tm-entry-icon.is-muted {
-  background: var(--tm-surface-2);
-  color: var(--tm-text-2);
-}
-
-.pg-home-grafana-chevron {
-  flex: none;
-  width: 20px;
-  height: 20px;
-  color: var(--tm-text-3);
-  transition: transform 0.2s var(--tm-ease);
-}
-
-.pg-home-grafana[open] .pg-home-grafana-chevron {
-  transform: rotate(180deg);
-}
-
-.pg-home-grafana[open] summary {
-  border-bottom: 1px solid var(--tm-line);
 }

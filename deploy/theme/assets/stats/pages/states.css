@@ -25,16 +25,6 @@
   --pg-states-c: var(--tm-c6);
 }
 
-/* 宫格小字：放不下时整项藏掉后面的（限高一行、超出隐藏） */
-.pg-states-fit {
-  display: flex;
-  flex-wrap: wrap;
-  column-gap: 4px;
-  max-height: 1.45em;
-  overflow: hidden;
-  min-width: 0;
-}
-
 /* ---------------------------------------------------------------- 快捷范围 */
 
 .pg-states-quick .tm-seg {

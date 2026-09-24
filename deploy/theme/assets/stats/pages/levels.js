@@ -9,7 +9,8 @@ import * as ui from "../core/ui.js";
 import * as api from "../core/api.js";
 import * as fmt from "../core/format.js";
 import * as chart from "../core/chart.js";
-import { series, calcs, lenAuto, lenNum, legendTable } from "./_series.js";
+import { series, calcs, legendTable } from "./_series.js";
+import { lenDigits } from "./_drive-item.js";
 
 export const title = "电量和里程";
 export const range = { default: "180d" };
@@ -174,7 +175,16 @@ export async function render(ctx) {
   const lim = d.limits[0] || { lower: 20, upper: 80, lfp: false };
 
   if (!level.length && !odo.length) {
-    ui.render(ctx.root, ui.card(ui.empty(`${ctx.range.label}没有电量和里程记录。换个时间范围看看。`, { icon: "chart-timeline-variant", title: "没有数据" })));
+    ui.render(
+      ctx.root,
+      ui.card(
+        ui.empty(`${ctx.range.label}没有电量和里程记录。`, {
+          icon: "chart-timeline-variant",
+          title: "没有电量和里程记录",
+          action: ctx.range.key !== "all" ? ui.button("查看全部时间", { kind: "soft", href: ctx.href("/stats/levels", { r: "all", band: ctx.query.get("band") }) }) : null
+        })
+      )
+    );
     return;
   }
 
@@ -182,6 +192,8 @@ export async function render(ctx) {
   const uc = calcs(usable);
   const oc = calcs(odo);
   const pct0 = (v) => fmt.pct(v, 0);
+  // 里程表读数一律取整（各页统一）；「期间行驶」是距离，按距离的写法（不到 100 留一位）
+  const odoF = (v) => fmt.len(v, 0);
   // 分位带没有点时（比如范围里只有最后 2 小时有记录，面板的 SQL 算不出来）图例表里不列这四行，免得一排「—」
   const bandSeries = bandRows.length
     ? [
@@ -193,7 +205,7 @@ export async function render(ctx) {
     : [];
   let bandNote = "";
   if (bandRows.length) {
-    bandNote = `移动平均和分位数：先按 2 小时取平均（没有记录的时段沿用上一个值），再在前后各 ${half} 天的窗口里算；浅色带是 7.5%–92.5% 分位，实线是中位数，虚线是平均。窗口是所选时间范围的 1/6。`;
+    bandNote = `移动平均和分位数：先按 2 小时取平均（没有记录的时段沿用上一个值），再在前后各 ${half} 天的窗口里算；浅色带是 7.5–92.5% 分位，实线是中位数，虚线是平均。窗口是所选时间范围的 1/6。`;
     // 选「全部」这类很长的范围时，窗口比整段记录还长，每个点算的都是全部记录，几条线是平的（Grafana 也一样）
     const span = bandRows[bandRows.length - 1].time - bandRows[0].time;
     if (half * 86400e3 >= span) bandNote += "这段范围的窗口比整段记录还长，所以几条线是平的，就是全部记录的平均和分位数。";
@@ -213,7 +225,7 @@ export async function render(ctx) {
           {
             label: "平均电量",
             icon: "battery-50",
-            value: lc.mean == null ? null : fmt.num(lc.mean, 0),
+            value: lc.mean,
             unit: "%",
             sub: uc.mean == null ? null : `可用电量平均 ${fmt.pct(uc.mean, 0)}`
           },
@@ -255,16 +267,17 @@ export async function render(ctx) {
           {
             label: "期间行驶",
             icon: "road-variant",
-            value: lenNum(drove),
+            value: drove,
+            digits: lenDigits(drove),
             unit: fmt.unit.len,
             sub: ctx.range.label
           },
           {
             label: "里程表",
             icon: "counter",
-            value: lenNum(oc.max),
+            value: oc.max,
             unit: fmt.unit.len,
-            sub: oc.min == null ? null : `期初 ${lenAuto(oc.min)}`
+            sub: oc.min == null ? null : `期初 ${odoF(oc.min)}`
           }
         ],
         { cols: 2 }
@@ -272,7 +285,7 @@ export async function render(ctx) {
       ${ui.card(
         odo.length
           ? html`${ui.chartBox("pg-levels-odo", { height: 260, heightMobile: 220, label: "里程表读数随时间变化" })}
-              ${legendTable([{ name: "里程表", color: "c3", data: odo, fmt: lenAuto }], {
+              ${legendTable([{ name: "里程表", color: "c3", data: odo, fmt: odoF }], {
                 cols: [
                   { key: "min", label: "最低" },
                   { key: "max", label: "最高" }
@@ -338,7 +351,7 @@ export async function render(ctx) {
       );
     }
     // 提示框：电量是 2 分钟一个点、分位带是 2 小时一个点，横轴对不齐，按指针时刻去各组数据里找最近的点。
-    // 标题用最近那个电量点的时刻（没有就用指针时刻）
+    // 标题用最近那个电量点的时刻（没有就用指针时刻）。点都是某个时刻，0 点那个也写「00:00」，不写成整天的「周四」
     const H = 3600e3;
     const bandTip = bandRows.length
       ? [
@@ -368,7 +381,7 @@ export async function render(ctx) {
             maxGap: 3 * H,
             title: (t) => {
               const p = chart.nearest(level, t, 3 * H);
-              return chart.timeTitle(p ? p[0] : t);
+              return fmt.dateTime(p ? p[0] : t);
             }
           }
         ),
@@ -382,7 +395,7 @@ export async function render(ctx) {
       chart.create(ctx.root.querySelector("#pg-levels-odo"), {
         xAxis: chart.timeAxis({ min: "dataMin", max: "dataMax" }),
         yAxis: chart.valueAxis({ unit: fmt.unit.len, scale: true }),
-        series: [chart.line("里程表", odo, { color: "c3", area: true, fmt: lenAuto })],
+        series: [chart.line("里程表", odo, { color: "c3", area: true, fmt: odoF })],
         dataZoom: chart.zoom()
       })
     );

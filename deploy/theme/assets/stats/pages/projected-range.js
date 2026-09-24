@@ -8,7 +8,7 @@ import * as ui from "../core/ui.js";
 import * as api from "../core/api.js";
 import * as fmt from "../core/format.js";
 import * as chart from "../core/chart.js";
-import { series, calcs, lenAuto, lenNum, legendTable, bindLegendToggle } from "./_series.js";
+import { series, calcs, legendTable, bindLegendToggle } from "./_series.js";
 
 export const title = "续航变化";
 export const range = { default: "180d" };
@@ -111,9 +111,10 @@ export async function render(ctx) {
   const onIv = () => ui.onSegment(ctx.root, "iv", (v) => ctx.setQuery({ iv: v === DEFAULT_IV ? null : v }));
 
   if (!proj.length && !usable.length) {
+    const all = ctx.range.key !== "all" ? ui.button("查看全部时间", { kind: "soft", href: ctx.href("/stats/range", { r: "all", iv: ctx.query.get("iv") }) }) : null;
     ui.render(
       ctx.root,
-      html`${toolbar}${ui.card(ui.empty(`${ctx.range.label}没有续航记录。换个时间范围看看。`, { icon: "gauge", title: "没有数据" }))}`
+      html`${toolbar}${ui.card(ui.empty(`${ctx.range.label}没有续航记录。`, { icon: "gauge", title: "没有续航记录", action: all }))}`
     );
     onIv();
     return;
@@ -121,6 +122,8 @@ export async function render(ctx) {
 
   const pctF = (v) => fmt.pct(v, 0);
   const tempF = (v) => fmt.temp(v, 1);
+  // 续航和里程表读数都取整（各页统一）
+  const lenF = (v) => fmt.len(v, 0);
   const kind = ctx.settings.preferredRange === "ideal" ? "理想" : "额定";
   const level = series(d.ranges, "level");
 
@@ -132,8 +135,8 @@ export async function render(ctx) {
       sub: `把${kind}续航按比例换算到 100% 电量；电池衰减会让它随里程慢慢往下走。`,
       right: { unit: fmt.unit.len, scale: true },
       lines: [
-        { name: "满电续航", color: "c1", data: proj, fmt: lenAuto, opts: { area: true, z: 3 } },
-        { name: "里程", color: "c3", data: series(d.mileage, "v"), fmt: lenAuto, right: true, opts: { step: "end", width: 2, z: 2 } }
+        { name: "满电续航", color: "c1", data: proj, fmt: lenF, opts: { area: true, z: 3 } },
+        { name: "里程", color: "c3", data: series(d.mileage, "v"), fmt: lenF, right: true, opts: { step: "end", width: 2, z: 2 } }
       ]
     },
     {
@@ -142,8 +145,8 @@ export async function render(ctx) {
       sub: "天冷时电池有一部分电量暂时用不了（可用电量低于电量），按电量算的续航会偏低。",
       right: { unit: "%", min: 0, max: 100 },
       lines: [
-        { name: "按可用电量", color: "c1", data: usable, fmt: lenAuto, opts: { z: 3 } },
-        { name: "按电量", color: "c5", data: level, fmt: lenAuto, faint: 0.8 },
+        { name: "按可用电量", color: "c1", data: usable, fmt: lenF, opts: { z: 3 } },
+        { name: "按电量", color: "c5", data: level, fmt: lenF, faint: 0.8 },
         { name: "电量", color: "c4", data: series(d.levels, "level"), fmt: pctF, right: true, faint: 0.55, z: 2 },
         { name: "可用电量", color: "c2", data: series(d.levels, "usable"), fmt: pctF, right: true, faint: 0.55, z: 1 }
       ]
@@ -154,8 +157,8 @@ export async function render(ctx) {
       sub: "看满电续航和气温的关系：天冷时通常偏低，天暖后回升。",
       right: { unit: fmt.unit.temp, scale: true },
       lines: [
-        { name: "按可用电量", color: "c1", data: usable, fmt: lenAuto, opts: { z: 3 } },
-        { name: "按电量", color: "c5", data: level, fmt: lenAuto, faint: 0.8 },
+        { name: "按可用电量", color: "c1", data: usable, fmt: lenF, opts: { z: 3 } },
+        { name: "按电量", color: "c5", data: level, fmt: lenF, faint: 0.8 },
         { name: "车外温度", color: "c2", data: series(d.temp, "v"), fmt: tempF, right: true, faint: 0.7 }
       ]
     }
@@ -168,10 +171,10 @@ export async function render(ctx) {
     ctx.root,
     html`
       ${ui.stats([
-        { label: "最近满电续航", icon: "gauge", value: lenNum(rc.last), unit: fmt.unit.len, sub: lastT ? fmt.dateTime(lastT) : null },
-        { label: "平均", icon: "chart-line", value: lenNum(rc.mean), unit: fmt.unit.len, sub: ctx.range.label },
-        { label: "最高", icon: "arrow-up", value: lenNum(rc.max), unit: fmt.unit.len },
-        { label: "最低", icon: "arrow-down", value: lenNum(rc.min), unit: fmt.unit.len }
+        { label: "最近满电续航", icon: "gauge", value: rc.last, unit: fmt.unit.len, sub: lastT ? fmt.dateTime(lastT) : null },
+        { label: "平均", icon: "chart-line", value: rc.mean, unit: fmt.unit.len, sub: ctx.range.label },
+        { label: "最高", icon: "arrow-up", value: rc.max, unit: fmt.unit.len },
+        { label: "最低", icon: "arrow-down", value: rc.min, unit: fmt.unit.len }
       ])}
       <div class="tm-stack">${toolbar}${tableHint}</div>
       ${CHARTS.map((c) =>
@@ -200,9 +203,10 @@ export async function render(ctx) {
     yAxis: [chart.valueAxis({ unit: fmt.unit.len, scale: true }), rightAxis(c.right)],
     // 各条线来自不同的查询（位置点 + 充电 / 只有位置点），不是每个时间桶都有：按指针时刻去每条线里找同一个桶。
     // 图例表关掉的线，提示框里也不显示（nearestTooltip 读图表的图例状态）
+    // 标题写时间桶的开始时刻：粒度 1 小时及以下时有 0 点的桶，也写「00:00」，不写成整天的「周四」
     tooltip: chart.nearestTooltip(
       c.lines.map((l) => ({ name: l.name, data: l.data, color: l.color, fmt: l.fmt })),
-      { maxGap: IV_MS[iv] / 2 }
+      { maxGap: IV_MS[iv] / 2, title: (t) => fmt.dateTime(t) }
     ),
     series: c.lines.map(lineOf)
   });

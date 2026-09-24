@@ -225,22 +225,8 @@ function healthTone(deg) {
   return deg < 10 ? "green" : deg < 20 ? "amber" : "red";
 }
 
-// 「2026091」→「2026年9月上半月」
-function halfMonth(title) {
-  const m = /^(\d{4})(\d{2})([12])$/.exec(String(title || ""));
-  if (!m) return String(title || "");
-  return `${+m[1]}年${+m[2]}月${m[3] === "1" ? "上半月" : "下半月"}`;
-}
-
-// 里程、续航：100 以上取整，不到 100 保留 1 位（各页统一的写法）
-const lenDigits = (v) => (v != null && Math.abs(v) < 99.95 ? 1 : 0);
-
-// 带正负号的差值：−3.1 / +2.1（0 不带符号）
-function signed(v, d) {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const s = fmt.num(Math.abs(v), d);
-  return `${s === fmt.num(0, d) ? "" : v < 0 ? "−" : "+"}${s}`;
-}
+// 电量合计一位小数；上万度（开了几年）时 320 宽的宫格放不下「12,345.6 kWh」，只有这时取整
+const kwhDigits = (v) => (v >= 10000 ? 0 : 1);
 
 export async function render(ctx) {
   ui.render(ctx.root, ui.skeleton(["stats", "chart", "stats"]));
@@ -255,7 +241,7 @@ export async function render(ctx) {
   if (noData) {
     ui.render(
       ctx.root,
-      ui.card(ui.empty("这辆车还没有行程和充电记录，开几次、充几次电之后再来看。", { icon: "battery-heart-variant", title: "还没有数据" }))
+      ui.card(ui.empty("这辆车还没有行程和充电记录，开几次、充几次电之后再来看。", { icon: "battery-heart-variant", title: "没有行程和充电" }))
     );
     return;
   }
@@ -267,7 +253,11 @@ export async function render(ctx) {
   const deg = hasCap ? Math.max(0, 100 - (cap * 100) / capNew) : null;
   const health = deg == null ? null : Math.min(100, 100 - deg);
   const tone = healthTone(deg);
-  const rangeLost = s.max_range != null && s.current_range != null ? s.max_range - s.current_range : null;
+  // 括号里的差值用显示出来的两个数相减（容量一位小数、续航取整）：没取整时相减再取整，
+  // 会出现「538 km」「新车 544（−7）」这种自己减一下对不上的
+  const round1 = (v) => Math.round(v * 10) / 10;
+  const capDiff = hasCap ? round1(cap) - round1(capNew) : null;
+  const rangeDiff = s.max_range != null && s.current_range != null ? Math.round(s.current_range) - Math.round(s.max_range) : null;
   const cycles = s.added != null && capNew > 0 ? Math.floor(s.added / capNew) : null;
   const stored = s.soc != null && cap != null ? (s.soc * cap) / 100 : null;
   const chargeEff = s.used > 0 ? s.added / s.used : null;
@@ -284,7 +274,7 @@ export async function render(ctx) {
         ${ui.pill("估算值", "muted")}
       </div>
       <div class="pg-battery-big">
-        <span class="pg-battery-num">${health == null ? "—" : fmt.num(health, 1)}<small>%</small></span>
+        <span class="pg-battery-num">${health == null ? "—" : html`${fmt.num(health, 1)}<small>%</small>`}</span>
         ${deg != null ? html`<span class="pg-battery-deg tm-tone-${tone}">衰减 ${fmt.pct(deg, 1)}</span>` : ""}
       </div>
       ${health != null ? ui.bar(health, 100, tone) : ""}
@@ -300,7 +290,7 @@ export async function render(ctx) {
         ${s.soc_date ? html`<span class="tm-note">${fmt.rel(s.soc_date)}</span>` : ""}
       </div>
       <div class="pg-battery-big">
-        <span class="pg-battery-num is-sm">${s.soc == null ? "—" : fmt.num(s.soc, 0)}<small>%</small></span>
+        <span class="pg-battery-num is-sm">${s.soc == null ? "—" : html`${fmt.num(s.soc, 0)}<small>%</small>`}</span>
         ${stored != null ? html`<span class="pg-battery-deg">约 ${fmt.kwh(stored, 1)}</span>` : ""}
       </div>
       ${ui.bar(s.soc ?? 0, 100)}
@@ -313,18 +303,19 @@ export async function render(ctx) {
       {
         label: "可用容量",
         icon: "car-battery",
-        value: cap == null ? null : fmt.num(cap, 1),
+        value: cap,
+        digits: 1,
         unit: "kWh",
-        sub: capNew != null ? `新车 ${fmt.num(capNew, 1)}${hasCap ? `（${signed(cap - capNew, 1)}）` : ""}` : "充电记录不够"
+        sub: capNew != null ? `新车 ${fmt.num(capNew, 1)}${capDiff != null ? `（${fmt.signed(capDiff, 1)}）` : ""}` : "充电记录不够"
       },
       {
         label: "满电续航",
         icon: "gauge",
-        value: s.current_range == null ? null : fmt.num(s.current_range, lenDigits(s.current_range)),
+        value: s.current_range,
         unit: fmt.unit.len,
         sub:
           s.max_range != null
-            ? `新车 ${fmt.num(s.max_range, lenDigits(s.max_range))}${rangeLost != null ? `（${signed(-rangeLost, lenDigits(rangeLost))}）` : ""}`
+            ? `新车 ${fmt.num(s.max_range, 0)}${rangeDiff != null ? `（${fmt.signed(rangeDiff, 0)}）` : ""}`
             : null
       },
       {
@@ -337,7 +328,7 @@ export async function render(ctx) {
       {
         label: "能耗",
         icon: "leaf",
-        value: s.efficiency == null ? null : fmt.num(s.efficiency, 0),
+        value: s.efficiency,
         unit: fmt.unit.cons,
         sub: "按充电推算"
       }
@@ -346,6 +337,7 @@ export async function render(ctx) {
   );
 
   const acPct = acdcTotal > 0 ? (acdc.AC / acdcTotal) * 100 : 0;
+  const dcPct = 100 - acPct;
   const acdcCard =
     acdcTotal > 0
       ? ui.card(
@@ -353,13 +345,13 @@ export async function render(ctx) {
               <span class="tm-strong">交流 / 直流</span>
               <span class="tm-note">从电网取的电量</span>
             </div>
-            <div class="pg-battery-split" role="img" aria-label="${`交流 ${fmt.num(acPct, 0)}%，直流 ${fmt.num(100 - acPct, 0)}%`}">
+            <div class="pg-battery-split" role="img" aria-label="${`交流 ${fmt.share(acPct)}，直流 ${fmt.share(dcPct)}`}">
               ${acdc.AC > 0 ? html`<span class="is-ac" style="flex:${acdc.AC.toFixed(3)}"></span>` : ""}
               ${acdc.DC > 0 ? html`<span class="is-dc" style="flex:${acdc.DC.toFixed(3)}"></span>` : ""}
             </div>
             <div class="pg-battery-split-legend">
-              <div><i class="is-ac"></i><span>交流（慢充）</span><b>${fmt.kwh(acdc.AC, 1)}</b><em>${fmt.pct(acPct, 0)}</em></div>
-              <div><i class="is-dc"></i><span>直流（快充）</span><b>${fmt.kwh(acdc.DC, 1)}</b><em>${fmt.pct(100 - acPct, 0)}</em></div>
+              <div><i class="is-ac"></i><span>交流（慢充）</span><b>${fmt.kwh(acdc.AC, 1)}</b><em>${fmt.share(acPct)}</em></div>
+              <div><i class="is-dc"></i><span>直流（快充）</span><b>${fmt.kwh(acdc.DC, 1)}</b><em>${fmt.share(dcPct)}</em></div>
             </div>`
         )
       : "";
@@ -370,8 +362,8 @@ export async function render(ctx) {
       ${ui.stats(
         [
           { label: "充电次数", icon: "ev-station", value: s.charges ?? 0, unit: "次" },
-          { label: "充入电池", icon: "battery-charging-high", value: s.added, digits: 1, unit: "kWh" },
-          { label: "从电网取电", icon: "power-plug-outline", value: s.used, digits: 1, unit: "kWh" },
+          { label: "充入电池", icon: "battery-charging-high", value: s.added, digits: kwhDigits(s.added), unit: "kWh" },
+          { label: "从电网取电", icon: "power-plug-outline", value: s.used, digits: kwhDigits(s.used), unit: "kWh" },
           { label: "充电效率", icon: "flash-outline", value: chargeEff == null ? null : chargeEff * 100, digits: 1, unit: "%", sub: "充入 ÷ 取电" }
         ],
         { cols: 2 }
@@ -447,6 +439,8 @@ export async function render(ctx) {
 
   const pts = d.points.map((r) => [r.odometer, r.kwh, r.day]);
   const med = d.median.map((r) => [r.odometer, r.kwh, r.title]);
+  // 半月中位数按「2026091」（年月 + 上 / 下半月）查，写进每天那个点的提示框
+  const medBy = new Map(d.median.map((r) => [String(r.title), r]));
   const all = pts.map((p) => p[1]).concat(med.map((p) => p[1]));
   if (capNew != null) all.push(capNew);
   const lo = Math.min(...all);
@@ -464,16 +458,13 @@ export async function render(ctx) {
       trigger: "item",
       formatter: (p) => {
         const v = p.value;
-        if (p.seriesIndex === 1) {
-          return chart.tipHtml(halfMonth(v[2]), [
-            { color: p.color, name: "容量中位数", value: fmt.kwh(v[1], 1) },
-            { name: "起始里程", value: fmt.len(v[0], lenDigits(v[0])) }
-          ]);
-        }
-        const day = /^\d{4}-\d{2}-\d{2}$/.test(v[2]) ? new Date(+v[2].slice(0, 4), +v[2].slice(5, 7) - 1, +v[2].slice(8, 10)) : null;
-        return chart.tipHtml(day ? fmt.dateAuto(day) : v[2], [
+        // 每天一个点：标题写「9月24日 周四」（整天的点，和别的图一样），顺带写上这一天所在半个月的中位数
+        const ymd = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v[2]);
+        const half = ymd ? medBy.get(`${ymd[1]}${ymd[2]}${+ymd[3] <= 15 ? 1 : 2}`) : null;
+        return chart.tipHtml(ymd ? chart.timeTitle(new Date(+ymd[1], +ymd[2] - 1, +ymd[3]).getTime()) : v[2], [
           { color: p.color, name: "推算容量", value: fmt.kwh(v[1], 1) },
-          { name: "里程表", value: fmt.len(v[0], lenDigits(v[0])) }
+          half ? { color: chart.color("c2"), name: "半月中位数", value: fmt.kwh(half.kwh, 1) } : null,
+          { name: "里程表", value: fmt.len(v[0], 0) }
         ]);
       }
     },
@@ -503,6 +494,9 @@ export async function render(ctx) {
         z: 3,
         lineStyle: { color: "@c2", width: 2.5 },
         itemStyle: { color: "@c2" },
+        // 中位数线只看不点（silent，和充电统计的快充中位数线一样）：它的节点就落在每天的点上，能点的话会盖住那些点、
+        // 抢走它们的提示框。中位数写在每天那个点的提示框里
+        silent: true,
         // 点少时（比如刚接入的车）把节点画出来，不然一两个点的「线」看不见
         showSymbol: med.length < 3,
         symbolSize: 6

@@ -7,7 +7,7 @@ import * as api from "../core/api.js";
 import * as fmt from "../core/format.js";
 import * as chart from "../core/chart.js";
 import * as map from "../core/map.js";
-import { DRIVE_ITEM_SQL, driveItem } from "./_drive-item.js";
+import { DRIVE_ITEM_SQL, driveItem, lenDigits, timeSpan } from "./_drive-item.js";
 import { CHARGE_ITEM_SQL, chargeItem } from "./_charge-item.js";
 import { UNKNOWN_PLACE } from "./_shared.js";
 
@@ -23,6 +23,8 @@ export const range = {
   }
 };
 export const css = true;
+// 外壳等 range.auto 时先画的骨架，和 render 一开始画的是同一个，页面接手时不跳形状
+export const skeleton = () => ui.skeleton(["map", "stats", "chart", "list"], { height: 320 });
 
 const DRIVE_PAGE = 20;
 const CHARGE_PAGE = 10;
@@ -301,43 +303,12 @@ function daysApart(a, b) {
 
 // 从某一刻到今天，对应的「近 N 天」key（含今天）
 function daysKey(ms) {
-  const today = new Date();
-  const a = new Date(dayStart(ms));
-  const n = Math.round((new Date(today.getFullYear(), today.getMonth(), today.getDate()) - a) / 86400e3) + 1;
-  return `${Math.max(1, Math.min(3650, n))}d`;
-}
-
-// 一段时间（跨午夜写「次日」）：同一天「9月21日 14:05–16:57」，第二天结束「9月21日 23:06–次日 02:52」，再往后两头都写日期
-function period(a, b) {
-  const n = daysApart(a, b);
-  if (n === 0) return `${fmt.dateTime(a)}–${fmt.time(b)}`;
-  if (n === 1) return `${fmt.dateTime(a)}–次日 ${fmt.time(b)}`;
-  return `${fmt.dateTime(a)} – ${fmt.dateTime(b)}`;
-}
-
-// 占比：不是 0 的项别显示成「0%」，没占满的别显示成「100%」
-function share(p) {
-  if (p > 0 && p < 1) return "<1%";
-  if (p > 99 && p < 100) return ">99%";
-  return fmt.pct(p);
+  return `${Math.max(1, Math.min(3650, daysApart(ms, Date.now()) + 1))}d`;
 }
 
 // 面板里的时长是秒。超过一天显示「1天3小时」，统计格子里放得下
 function hours(sec) {
   return sec > 0 ? fmt.duration(sec / 60) : null;
-}
-
-// 时间轴。几天以内的范围 ECharts 按小时出刻度（手机上 6 小时一格），0 点那一格的日期「9月24日」夹在「18:00」「06:00」中间，
-// 被当成重叠的字藏掉，只剩「06:00 12:00 18:00 06:00…」，看不出是哪天。按图宽把刻度放稀（每格约 85px 以上），
-// 0 点的日期就留得住：390 宽两天是「9月23日 12:00 9月24日 12:00」，320 宽是「9月23日 9月24日」。
-// reserve：纵轴文字、两边留白大约占掉的宽度。option 写成函数，图宽变了核心会重新调，刻度跟着重算。长范围的刻度本来就是日期，交给核心
-function timeAxis(from, end, box, reserve, extra = {}) {
-  const a = { min: from, max: end, ...extra };
-  if (end - from <= 8 * DAY) {
-    const px = Math.max(120, (box.clientWidth || 300) - reserve);
-    a.splitNumber = Math.max(2, Math.min(6, Math.round(px / 85)));
-  }
-  return chart.timeAxis(a);
 }
 
 // 状态行 → 连续的段（截到 [from, end]），相邻同名的合并（面板的 mergeValues）
@@ -359,7 +330,7 @@ function stateSegments(rows, from, end) {
 // ---------------------------------------------------------------- 页面
 
 export async function render(ctx) {
-  ui.render(ctx.root, ui.skeleton(["map", "stats", "chart", "list"], { height: 320 }));
+  ui.render(ctx.root, skeleton());
 
   const r = ctx.range;
   const end = Math.min(r.to, Date.now());
@@ -409,7 +380,7 @@ export async function render(ctx) {
           ? ui.empty("TeslaMate 记录到行程后，这里会显示最近一次出行。", { icon: "map-marker-distance", title: "还没有行程" })
           : ui.empty(`${r.label}没有行程，也没有充电。`, {
               icon: "map-marker-distance",
-              title: "这段时间没有出行",
+              title: "没有行程和充电",
               action: ui.button("看最近一次出行", { kind: "soft", href: ctx.href("/stats/trip", { r: null }) })
             })
       )
@@ -434,17 +405,18 @@ export async function render(ctx) {
   const dr = one("drives");
   const tripSec = dr.first_start != null && dr.last_end > dr.first_start ? (dr.last_end - dr.first_start) / 1000 : null;
   // 同一天「06:30–16:57」，第二天到「23:06–次日 02:52」，再长写日期段
-  let tripSpan = null;
-  if (tripSec != null) {
-    const n = daysApart(dr.first_start, dr.last_end);
-    tripSpan =
-      n === 0
-        ? `${fmt.time(dr.first_start)}–${fmt.time(dr.last_end)}`
-        : n === 1
-          ? `${fmt.time(dr.first_start)}–次日 ${fmt.time(dr.last_end)}`
-          : fmt.dateRange(dr.first_start, dr.last_end);
-  }
+  const tripSpan =
+    tripSec == null
+      ? null
+      : daysApart(dr.first_start, dr.last_end) <= 1
+        ? timeSpan(dr.first_start, dr.last_end)
+        : fmt.dateRange(dr.first_start, dr.last_end);
   const avgSpeed = one("speed").speed;
+  // 充电时长（面板口径）不算没结束的充电（正在充、中途断掉），格子里的次数也不算；
+  // 只有没结束的时不能写「没有充电」：下面的充电列表里明明有一行（和时间线的汇总一样）
+  const openCharges = charges.filter((c) => c.end_date == null).length;
+  const doneCharges = charges.length - openCharges;
+  const chargeSub = doneCharges ? `${fmt.int(doneCharges)} 次充电` : openCharges ? `${fmt.int(openCharges)} 次没结束，不计入` : "没有充电";
   // 充入电量的副标题：交流 / 直流各多少（面板的横条），放不下时按段折成两行。
   // 只有一种时不写数（「377.5 kWh / 交流 377.5」重复）
   let addedSub = null;
@@ -452,25 +424,23 @@ export async function render(ctx) {
     addedSub = add.DC && add.AC ? ui.segs([`直流 ${fmt.num(add.DC, 1)}`, `交流 ${fmt.num(add.AC, 1)}`]) : add.DC ? "全部是直流" : "全部是交流";
   }
 
+  // 电量合计一位小数；「全部」这种长范围上万度时取整（320 宽的格子放不下）
+  const kwhDigits = (v) => (v >= 10000 ? 0 : 1);
+
   const statsHtml = ui.stats(
     [
-      { label: "里程", icon: "road-variant", value: fmt.num(mileage, mileage != null && mileage < 100 ? 1 : 0), unit: fmt.unit.len, sub: `${fmt.int(nDrives)} 次行程` },
-      // 总时长是第一次出发到最后一次到达（墙上时间，秒表图标）；行驶时长和行程页的「驾驶时长」同一种量，用同一个时钟图标
+      { label: "里程", icon: "road-variant", value: mileage, digits: lenDigits(mileage), unit: fmt.unit.len, sub: `${fmt.int(nDrives)} 次行程` },
+      // 总时长是第一次出发到最后一次到达（墙上时间，秒表图标，按天写）；行驶时长和行程页的「驾驶时长」同一种量，
+      // 用同一个时钟图标、同一个按小时的写法
       { label: "总时长", icon: "timer-outline", value: hours(tripSec), sub: tripSpan },
-      { label: "行驶时长", icon: "clock-outline", value: hours(driveSec), sub: avgSpeed != null ? `均速 ${fmt.speed(avgSpeed)}` : null },
-      { label: "充电时长", icon: "ev-station", value: hours(chargeSec), sub: charges.length ? `${fmt.int(charges.length)} 次充电` : "没有充电" },
-      { label: "最高速度", icon: "speedometer", value: fmt.num(dr.speed_max, 0), unit: fmt.unit.speed },
+      { label: "行驶时长", icon: "clock-outline", ...fmt.hoursStat(driveSec > 0 ? driveSec / 60 : null), sub: avgSpeed != null ? `均速 ${fmt.speed(avgSpeed)}` : null },
+      { label: "充电时长", icon: "ev-station", value: hours(chargeSec), sub: chargeSub },
+      { label: "最高速度", icon: "speedometer", value: dr.speed_max, unit: fmt.unit.speed },
       // 面板「Ø Speed incl. DC charging」：路上停下来快充的时间也算进去，更接近「到目的地要多久」
-      { label: "全程均速", icon: "speedometer", value: fmt.num(one("speedDc").speed, 0), unit: fmt.unit.speed, sub: "含直流充电时间" },
-      { label: "能耗（净）", icon: "leaf", value: fmt.num(one("consNet").consumption, 0), unit: fmt.unit.cons, sub: gross.consumption != null ? `毛 ${fmt.cons(gross.consumption)}` : null },
-      { label: "耗电（毛）", icon: "lightning-bolt", value: fmt.num(gross.energy, 1), unit: "kWh", sub: "含停车、空调等" },
-      {
-        label: "充入电量",
-        icon: "battery-charging-high",
-        value: addedTotal > 0 ? fmt.num(addedTotal, 1) : null,
-        unit: "kWh",
-        sub: addedSub
-      },
+      { label: "全程均速", icon: "speedometer", value: one("speedDc").speed, unit: fmt.unit.speed, sub: "含直流充电时间" },
+      { label: "能耗（净）", icon: "leaf", value: one("consNet").consumption, unit: fmt.unit.cons, sub: gross.consumption != null ? `毛 ${fmt.cons(gross.consumption)}` : null },
+      { label: "耗电（毛）", icon: "lightning-bolt", value: gross.energy, digits: kwhDigits(gross.energy), unit: "kWh", sub: "含停车、空调等" },
+      { label: "充入电量", icon: "battery-charging-high", value: addedTotal > 0 ? addedTotal : null, digits: kwhDigits(addedTotal), unit: "kWh", sub: addedSub },
       { label: "充电花费", icon: "cash-multiple", value: cost != null ? fmt.money(cost) : null, sub: per100 != null ? `每百${fmt.unit.len === "km" ? "公里" : "英里"} ${fmt.money(per100)}` : null }
     ],
     { cols: 2 }
@@ -506,14 +476,14 @@ export async function render(ctx) {
           </div>
           <div class="pg-trip-alloc-legend">
             ${alloc.map(
-              (x) => html`<div><i style="background:${x.color}"></i><span>${x.label}</span><b class="tm-num">${hours(x.sec)}</b><em class="tm-num">${share((x.sec / allocSum) * 100)}</em></div>`
+              (x) => html`<div><i style="background:${x.color}"></i><span>${x.label}</span><b class="tm-num">${hours(x.sec)}</b><em class="tm-num">${fmt.share((x.sec / allocSum) * 100)}</em></div>`
             )}
           </div>
           <div class="pg-trip-states">
             ${ui.chartBox("pg-trip-states", { height: 76, heightMobile: 76, label: "车辆状态时间线" })}
             <div id="pg-trip-states-legend"></div>
           </div>`),
-        { sub: `${period(from, end)}，共 ${hours(spanSec)}${from > r.from ? "（从最早的记录算起）" : ""}` }
+        { sub: `${fmt.period(from, end)}，共 ${hours(spanSec)}${from > r.from ? "（从最早的记录算起）" : ""}` }
       )}
 
       <div class="tm-grid-2">
@@ -634,14 +604,12 @@ async function drawStates(ctx, rows, from, end) {
   const names = [...new Set(segs.map((s) => s.name))];
   const colorOf = Object.fromEntries(segs.map((s) => [s.name, s.color]));
   ui.render(ctx.root.querySelector("#pg-trip-states-legend"), ui.legend(names.map((n) => ({ label: n, color: `var(--tm-${colorOf[n]})` }))));
-  // 提示框的时间段跨午夜写「次日」（核心默认写「9月21日 23:06 – 02:52」，看不出结束在第二天）
-  const tip = (it) => chart.tipHtml(it.name, [{ color: chart.color(it.color), name: period(it.start, it.end), value: fmt.duration((it.end - it.start) / 60e3) }]);
   await chart.create(box, () => ({
     // 状态条很矮，顶上不用留图例的地方；左右没有纵轴文字，靠边刻度的留白核心会给
     grid: { top: 4, bottom: 2 },
-    xAxis: timeAxis(from, end, box, 46, { splitLine: { show: true, lineStyle: { color: "@line" } } }),
+    xAxis: chart.timeAxis({ min: from, max: end, splitLine: { show: true, lineStyle: { color: "@line" } } }),
     yAxis: chart.categoryAxis(["状态"], { axisLine: { show: false }, axisLabel: { show: false } }),
-    series: [chart.timelineSeries(segs, { height: 0.7, tooltip: tip })]
+    series: [chart.timelineSeries(segs, { height: 0.7 })]
   }));
 }
 
@@ -657,7 +625,7 @@ async function drawLevel(ctx, rows, from, end) {
   const soc = pts.filter((x) => x.soc != null).map((x) => [x.time, +(+x.soc).toFixed(1)]);
   const rng = pts.filter((x) => x.range != null).map((x) => [x.time, +(+x.range).toFixed(1)]);
   await chart.create(box, () => ({
-    xAxis: timeAxis(from, end, box, 80),
+    xAxis: chart.timeAxis({ min: from, max: end }),
     yAxis: [
       chart.valueAxis({ unit: "%", min: 0, max: 100 }),
       chart.valueAxis({ unit: fmt.unit.len, position: "right", min: 0, splitLine: { show: false } })
@@ -679,7 +647,7 @@ async function drawElev(ctx, rows, from, end) {
   }
   const elev = rows.map((x) => [x.time, x.elevation]);
   await chart.create(box, () => ({
-    xAxis: timeAxis(from, end, box, 60),
+    xAxis: chart.timeAxis({ min: from, max: end }),
     yAxis: chart.valueAxis({ unit: fmt.unit.altLen, scale: true }),
     series: [chart.line("海拔", elev, { color: "c5", area: true, fmt: (v) => fmt.alt(v) })],
     dataZoom: chart.zoom()

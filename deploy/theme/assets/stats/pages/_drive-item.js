@@ -5,9 +5,9 @@
  *   driveItem(row, ctx, { date })                  一行 → ui.list 的一项
  *   groupByDay(rows)                               按本地日期分组（行程列表的「今天 / 昨天 / 9月22日 周一」）
  *   driveTitle(row)                                「家 → 公司」
- *   lenText(v)                                     里程：≥100 取整、<100 一位小数（「8.2 km」「318 km」）
- *   timeSpan(start, end)                           「07:37–07:54」，跨午夜「23:06–次日 02:52」
- *   endTime(start, end)                            只要结束那一半：「07:54」/「次日 02:52」/ 再往后写日期
+ *   metaItem(icon, label, text)                    列表行次要信息的一项：小图标 + 数字（时间线也用）
+ *   lenText / lenDigits / timeSpan / endTime       里程小数位、时间段的写法，在 core/format.js（各页统一）；这里再导出一次，
+ *                                                  已经从这里导入的页面不用改
  *
  * where 是额外的 WHERE 条件片段，可以用这些表别名：
  *   d 行程（drives）、sa / ea 起终点地址、sg / eg 起终点地理围栏、sp / ep 起终点位置点（positions）
@@ -20,15 +20,17 @@
  *   start_place, end_place（围栏名优先的短地名，可能为 null）,
  *   start_soc, end_soc（%）, energy（净耗电 kWh）, consumption（净能耗 Wh/km 或 Wh/mi）,
  *   speed_max, speed_avg（km/h 或 mph）, power_max（kW）, outside_temp（°C/°F，平均）,
- *   ascent, descent（m 或 ft）, reduced_range（冷车续航打折，布尔）,
+ *   ascent, descent（m 或 ft）, reduced_range（冷车续航打折，布尔；没结束的行程总是 false）,
  *   efficiency（续航达成率，按爬升 / 下降修正，1 = 100%）, start_geofence_id, end_geofence_id,
- *   incomplete（没有结束的行程：TeslaMate 在行程中途停过）
+ *   state（done 已结束 / driving 正在行驶 / incomplete 中途断掉：没有 end_date 的行程分这两种，口径见 _shared.js driveStateSql）,
+ *   last_date（只有正在行驶的有：最新一个带续航的位置点，毫秒）
  * 耗电、能耗、续航达成率的算法和 Grafana「Drives」面板的表格一样（续航差 × 车辆能效）。
  */
 import { html } from "../core/ui.js";
 import * as ui from "../core/ui.js";
 import * as fmt from "../core/format.js";
-import { placeSql, UNKNOWN_PLACE } from "./_shared.js";
+import { placeSql, UNKNOWN_PLACE, driveStateSql, statePill } from "./_shared.js";
+export { lenDigits, lenText, timeSpan, endTime } from "../core/format.js";
 
 export function DRIVE_ITEM_SQL(where, { limit, offset, incomplete = false } = {}) {
   const cond = where && String(where).trim() ? `(${where})` : "true";
@@ -37,7 +39,9 @@ export function DRIVE_ITEM_SQL(where, { limit, offset, incomplete = false } = {}
     Number.isSafeInteger(offset) && offset > 0 ? `offset ${offset}` : ""
   ].join(" ");
   // 冷车续航打折（面板的 ❄ 列）：行程里超过 1/4 的位置点可用电量比显示电量低。
-  // 只看有续航读数的点（streaming 推送点没有），和面板一样；用 (car_id, date) 的索引按时间段取，再按行程过滤
+  // 只看有续航读数的点（streaming 推送点没有），和面板一样；用 (car_id, date) 的索引按时间段取，再按行程过滤。
+  // 只算已结束的行程：没结束的列表行不显示这个标记，而把它们算进时间段的话，一次很久以前中途断掉的行程
+  // 就会让行程列表顶上「未完成的行程」那条查询每次都把这些年的位置点扫一遍
   return `with d0 as (
   select
     d.id, d.start_date, d.end_date, d.duration_min, d.distance,
@@ -47,7 +51,8 @@ export function DRIVE_ITEM_SQL(where, { limit, offset, incomplete = false } = {}
     sp.battery_level as start_soc, ep.battery_level as end_soc,
     c.efficiency as car_efficiency,
     ${placeSql("sg", "sa")} as start_place,
-    ${placeSql("eg", "ea")} as end_place
+    ${placeSql("eg", "ea")} as end_place,
+    ${driveStateSql("d")} as state
   from drives d
   join cars c on c.id = d.car_id
   left join addresses sa on sa.id = d.start_address_id
@@ -66,9 +71,9 @@ rr as (
   from positions p
   where p.car_id = $car_id
     and p.ideal_battery_range_km is not null
-    and p.date >= (select min(start_date) from d0)
-    and p.date <= (select max(coalesce(end_date, start_date + interval '1 day')) from d0)
-    and p.drive_id in (select id from d0)
+    and p.date >= (select min(start_date) from d0 where end_date is not null)
+    and p.date <= (select max(end_date) from d0)
+    and p.drive_id in (select id from d0 where end_date is not null)
   group by p.drive_id
 )
 select
@@ -89,54 +94,53 @@ select
     + 2100 * 0.85 * 9.81 * d0.descent / 3600 / 1000
     - 2100 * 9.81 * d0.ascent / 3600 / 1000, 0) as efficiency,
   d0.start_geofence_id, d0.end_geofence_id,
-  d0.end_date is null as incomplete
+  d0.state,
+  -- 正在行驶的「已开多久」算到最新的位置点（没结束的行程 duration_min 是空的）；从出发时刻往后找，走 (car_id, date) 的索引
+  case when d0.state = 'driving' then (
+    select max(p.date) from positions p
+    where p.car_id = $car_id and p.ideal_battery_range_km is not null and p.date >= d0.start_date and p.drive_id = d0.id
+  ) end as last_date
 from d0
 left join rr on rr.drive_id = d0.id
 order by d0.start_date desc, d0.id desc`;
 }
 
+// 没结束的行程一般没有起终点（TeslaMate 结束时才按位置点补上），只有开始时间：
+// 正在行驶的写「正在路上」，中途断掉的写「没有结束的行程」；有起点的写「家 → ？」
 export function driveTitle(row) {
-  if (row.incomplete) return row.start_place ? `${row.start_place} → ？` : "没有结束的行程";
+  if (row.end_date == null) {
+    if (row.start_place) return `${row.start_place} → ？`;
+    return row.state === "driving" ? "正在路上" : "没有结束的行程";
+  }
   return `${row.start_place || UNKNOWN_PLACE} → ${row.end_place || UNKNOWN_PLACE}`;
 }
 
-// 今天 / 昨天 / 9月22日（列表里不带星期，省地方）
-function shortDay(ms) {
-  const d = fmt.day(ms);
-  return d === "今天" || d === "昨天" ? d : fmt.dateAuto(ms);
-}
-
-// 里程的小数位（各页统一）：100 以上取整，不到 100 留一位
-export function lenText(v) {
-  if (v == null || v === "" || !Number.isFinite(+v)) return fmt.DASH;
-  // 99.96 按一位小数会写成「100.0」，这种也取整
-  return fmt.len(+v, Math.abs(+v) >= 99.95 ? 0 : 1);
-}
-
-// 结束时刻：同一天只写时刻，第二天写「次日 02:52」，再往后写日期
-export function endTime(start, end) {
-  if (end == null) return fmt.DASH;
-  const days = Math.round((dayStart(end) - dayStart(start)) / 86400e3);
-  if (days <= 0) return fmt.time(end);
-  if (days === 1) return `次日 ${fmt.time(end)}`;
-  return fmt.dateTime(end);
-}
-
-export function timeSpan(start, end) {
-  return `${fmt.time(start)}–${endTime(start, end)}`;
-}
-
 // 次要信息前面放个小图标，不用「·」隔开
-function metaItem(iconName, label, text) {
+export function metaItem(iconName, label, text) {
   return html`<span class="tm-num">${ui.icon(iconName, { label })} ${text}</span>`;
 }
 
 // opts.date：副标题里带不带日期。按天分组的列表（组头已经有日期）传 false
 export function driveItem(row, ctx, { date = true } = {}) {
   const href = ctx.href(`/stats/drives/${row.id}`);
-  const when = date ? `${shortDay(row.start_date)} ` : "";
+  const when = date ? `${fmt.shortDay(row.start_date)} ` : "";
 
-  if (row.incomplete) {
+  if (row.state === "driving") {
+    return {
+      href,
+      icon: "road-variant",
+      tone: "accent",
+      title: driveTitle(row),
+      // 已开多久算到最新的位置点；刚出发、还没有位置点时只写出发时刻
+      sub: ui.fit([
+        `${when}${fmt.time(row.start_date)} 出发`,
+        row.last_date > row.start_date && `已开 ${fmt.duration((row.last_date - row.start_date) / 60e3)}`
+      ]),
+      meta: statePill("driving")
+    };
+  }
+
+  if (row.end_date == null) {
     return {
       href,
       icon: "alert-circle-outline",
@@ -144,7 +148,7 @@ export function driveItem(row, ctx, { date = true } = {}) {
       title: driveTitle(row),
       // 标题和「未完成」标签已经说了没结束，副标题只写什么时候出发
       sub: `${when}${fmt.time(row.start_date)} 出发`,
-      meta: ui.pill("未完成", "amber")
+      meta: statePill("incomplete")
     };
   }
 
@@ -161,9 +165,9 @@ export function driveItem(row, ctx, { date = true } = {}) {
     icon: "road-variant",
     // 标题核心默认最多两行：「山姆会员商店(济南高新店) → 家」这种长地名不会把终点截没
     title: driveTitle(row),
-    sub: ui.fit([`${when}${timeSpan(row.start_date, row.end_date)}`, fmt.duration(row.duration_min)]),
+    sub: ui.fit([`${when}${fmt.timeSpan(row.start_date, row.end_date)}`, fmt.duration(row.duration_min)]),
     meta,
-    value: lenText(row.distance),
+    value: fmt.lenText(row.distance),
     valueSub: row.consumption != null ? fmt.cons(row.consumption) : row.energy != null ? fmt.kwh(row.energy, 1) : null
   };
 }

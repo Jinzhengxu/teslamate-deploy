@@ -1,18 +1,5 @@
 /* 地点（pages/locations.js）专用样式。只用 stats.css 的设计变量，亮暗自动适配。 */
 
-/* ---------------------------------------------------------------- 排行（城市、省份） */
-
-.pg-loc-rank {
-  display: grid;
-  gap: 12px;
-}
-
-.pg-loc-rank-row {
-  display: grid;
-  gap: 5px;
-  min-width: 0;
-}
-
 /* 右栏（省份 + 收藏点）自己竖排，和左栏的城市排行顶端对齐 */
 .pg-loc-col {
   gap: 16px;
@@ -27,13 +14,12 @@
   min-width: 0;
 }
 
-.pg-loc-search .tm-input {
+.pg-loc-search .tm-search {
   flex: 1 1 auto;
 }
 
 .pg-loc-search .tm-btn {
   flex: none;
-  height: 40px;
 }
 
 .pg-loc-filter {
@@ -46,20 +32,6 @@
 }
 
 /* ---------------------------------------------------------------- 列表 */
-
-.pg-loc-lists {
-  align-items: start;
-}
-
-/* 最近到访的标题（「地名, 路名 门牌」）最多两行：公共的行标题是单行省略，手机上会把路名截没 */
-.pg-loc-title {
-  display: -webkit-box;
-  overflow: hidden;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
 
 /* 地址行里的小链接（相关行程 / 设为收藏点）：行本身不能点，链接要一眼看得出来 */
 .pg-loc-link {
@@ -86,10 +58,4 @@
 
 .pg-loc-fence:hover .tm-pill {
   text-decoration: underline;
-}
-
-.pg-loc-more {
-  display: flex;
-  justify-content: center;
-  margin-top: 10px;
 }

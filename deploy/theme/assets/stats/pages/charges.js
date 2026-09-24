@@ -7,8 +7,8 @@ import * as ui from "../core/ui.js";
 import * as api from "../core/api.js";
 import * as fmt from "../core/format.js";
 import * as chart from "../core/chart.js";
-import { CHARGE_ITEM_SQL, chargeItem, chargeKind, chargeState, groupByDay } from "./_charge-item.js";
-import { UNKNOWN_PLACE } from "./_shared.js";
+import { CHARGE_ITEM_SQL, chargeItem, chargeKind, groupByDay } from "./_charge-item.js";
+import { UNKNOWN_PLACE, chargeState, FIX_DOC } from "./_shared.js";
 
 export const title = "充电";
 export const range = { default: "90d" };
@@ -16,7 +16,6 @@ export const css = true;
 
 // 先画 50 条，「再显示」每次加 50 条：全部范围可能有上千次充电，一次都画出来手机会卡
 const PAGE = 50;
-const FIX_DOC = "https://docs.teslamate.org/docs/maintenance/manually_fixing_data";
 
 const TYPES = [
   { value: "", label: "全部" },
@@ -123,16 +122,22 @@ function summarize(rows) {
   return s;
 }
 
-// 格子里的小字最多两行、尽量在空格处折：数字和单位、「慢充」和它的单价之间用不换行空格，只在它们之间的空格处折
-const nb = (text) => text.replace(/ /g, " ");
-
+// 和面板的「Summary of this period」一样，只算列表里的（已经结束的）充电：正在充的和中途断掉的单列在小节里，不计入
 function statsHtml(s) {
-  let priceSub = "按从电网取的电量算";
-  if (s.priceAC != null && s.priceDC != null) priceSub = `${nb(`慢充 ${fmt.money(s.priceAC)}`)} · ${nb(`快充 ${fmt.money(s.priceDC)}`)}`;
+  // 慢充、快充都有时分开写单价（折行时整段换行，行首不带「·」）
+  const priceSub = s.priceAC != null && s.priceDC != null ? ui.segs([`慢充 ${fmt.money(s.priceAC)}`, `快充 ${fmt.money(s.priceDC)}`]) : "按从电网取的电量算";
   return ui.stats(
     [
-      { label: "充电次数", icon: "ev-station", value: s.n, unit: "次", sub: `平均每次 ${nb(fmt.duration(s.dur / s.n))}` },
-      { label: "充入电量", icon: "battery-charging-high", value: fmt.num(s.added, 1), unit: "kWh", sub: `从电网取 ${nb(fmt.kwh(s.used, 1))}` },
+      { label: "充电次数", icon: "ev-station", value: s.n, unit: "次", sub: `平均每次 ${fmt.duration(s.dur / s.n)}` },
+      {
+        label: "充入电量",
+        icon: "battery-charging-high",
+        value: s.added,
+        // 「全部」范围可能上万度，320 宽的格子里放不下一位小数
+        digits: s.added >= 10000 ? 0 : 1,
+        unit: "kWh",
+        sub: `从电网取 ${fmt.kwh(s.used, 1)}`
+      },
       {
         label: "花费",
         icon: "cash-multiple",
@@ -301,20 +306,19 @@ async function drawChart(ctx, rows, span, kind) {
 
 // ---------------------------------------------------------------- 正在充电 / 未完成的充电（不看时间范围和筛选）
 
-// 没有结束时间的充电：最后一条记录还很新的是正在充（绿色），很久没有新记录的是 TeslaMate 中途停过（琥珀色，要手动修）
+// 没有结束时间的充电按 chargeState 分两节：最后一条记录还很新的是正在充（绿色），很久没有新记录的是 TeslaMate 中途停过（琥珀色，要手动修）
 function openSections(rows, ctx) {
   const live = rows.filter((r) => chargeState(r) === "charging");
   const broken = rows.filter((r) => chargeState(r) !== "charging");
   return html`${live.length
     ? ui.section("正在充电", ui.card(ui.list(live.map((r) => chargeItem(r, ctx))), { pad: false, cls: "pg-charges-live" }), {
-        sub: "还没结束，不计入下面的统计"
+        sub: "还没结束，不计入统计"
       })
     : ""}${broken.length
     ? ui.section(
         "未完成的充电",
         html`${ui.card(ui.list(broken.map((r) => chargeItem(r, ctx))), { pad: false, cls: "pg-charges-incomplete" })}
-          <p class="tm-note pg-charges-incomplete-note">TeslaMate 没有记录到${broken.length > 1 ? "这几次" : "这次"}充电的结束（当时可能停止了运行），所以不计入统计。
-            官方文档里有<a href="${FIX_DOC}" target="_blank" rel="noopener">手动修复数据</a>的方法。</p>`,
+          <p class="tm-note pg-charges-incomplete-note">TeslaMate 没有记录到${broken.length > 1 ? "这几次" : "这次"}充电的结束（当时可能停止了运行），所以不计入统计。官方文档里有<a href="${FIX_DOC}" target="_blank" rel="noopener">手动修复数据</a>的方法。</p>`,
         { sub: `${broken.length} 次，不受时间范围和筛选影响` }
       )
     : ""}`;
@@ -352,8 +356,8 @@ function table(rows, ctx) {
         { key: "eff", label: "效率", align: "right", fmt: (v, r) => (r.energy_used > 0 ? fmt.pct((r.energy_added / r.energy_used) * 100, 1) : null) },
         { key: "cost", label: "费用", align: "right", fmt: (v) => (v != null ? fmt.money(v) : "未计费") },
         { key: "cost_per_kwh", label: "元⁠/⁠度", align: "right", fmt: (v) => (v != null ? fmt.num(v, 2) : null) },
-        { key: "soc", label: "电量", align: "right", fmt: (v, r) => (r.start_soc != null ? `${r.start_soc}→${r.end_soc}%` : null) },
-        { key: "range_added", label: `续航增加 ${u.len}`, align: "right", fmt: (v) => (v != null ? (v >= 0 ? "+" : "") + fmt.num(v) : null) },
+        { key: "soc", label: "电量", align: "right", fmt: (v, r) => (r.start_soc != null && r.end_soc != null ? `${r.start_soc}→${r.end_soc}%` : null) },
+        { key: "range_added", label: `续航增加 ${u.len}`, align: "right", fmt: (v) => (v != null ? fmt.signed(v, 0) : null) },
         { key: "power_avg", label: "平均功率 kW", align: "right", fmt: (v) => fmt.num(v, 1) },
         {
           key: "rate",

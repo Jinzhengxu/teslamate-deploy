@@ -29,20 +29,6 @@
   opacity: 0.7;
 }
 
-/* 「当前版本」格子的小字：放得下就「9月12日安装 · 12 天前」，放不下整项藏掉后一项（限高一行、超出隐藏） */
-.pg-updates-fit {
-  display: flex;
-  flex-wrap: wrap;
-  column-gap: 6px;
-  max-height: 1.45em;
-  overflow: hidden;
-  min-width: 0;
-}
-
-.pg-updates-fit > span + span::before {
-  content: "· ";
-}
-
 /* 版本号后面那串提交哈希，小一号、浅一点 */
 .pg-updates-hash {
   color: var(--tm-text-hint);

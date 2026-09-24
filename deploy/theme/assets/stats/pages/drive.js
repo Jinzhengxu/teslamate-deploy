@@ -7,8 +7,8 @@ import * as api from "../core/api.js";
 import * as fmt from "../core/format.js";
 import * as chart from "../core/chart.js";
 import * as map from "../core/map.js";
-import { DRIVE_ITEM_SQL, driveTitle, lenText, timeSpan, endTime } from "./_drive-item.js";
-import { placeSql, placeFullSql, UNKNOWN_PLACE } from "./_shared.js";
+import { DRIVE_ITEM_SQL, driveTitle, lenText, lenDigits, timeSpan, endTime } from "./_drive-item.js";
+import { placeSql, placeFullSql, UNKNOWN_PLACE, driveState, FIX_DOC } from "./_shared.js";
 
 export const title = "行程详情";
 export const range = null;
@@ -18,7 +18,7 @@ export const css = true;
 
 // 行程本身。耗电 / 能耗 / 续航达成率和面板（以及行程列表）一样按续航差 × 车辆能效算
 const DRIVE_SQL = (id) => `select
-  d.id, d.start_date, d.end_date, d.end_date is null as incomplete,
+  d.id, d.start_date, d.end_date,
   extract(epoch from d.end_date - d.start_date) as seconds,
   d.duration_min,
   convert_km(d.distance::numeric, '$length_unit') as distance,
@@ -56,7 +56,7 @@ left join positions ep on ep.id = d.end_position_id
 where d.id = ${id} and d.car_id = $car_id`;
 
 // 面板的 Elevation Summary 和 Ø Speed：行程时间段里所有位置点的海拔差累加、车速平均（不是 距离 ÷ 时间）。
-// 顺便算出这个时间段（毫秒），后面取曲线用；没结束的行程用它最后一个位置点当结束
+// 顺便算出这个时间段（毫秒），后面取曲线用；没结束的行程用它最后一个位置点当结束（也拿它判断是正在开还是中途断掉）
 const RANGE_SQL = (id) => `with me as (
   select date_trunc('second', d.start_date) as t0,
          to_timestamp(ceil(extract(epoch from coalesce(d.end_date,
@@ -148,13 +148,15 @@ order by date`;
 
 // ---------------------------------------------------------------- 格式化小工具
 
-// 行程用时精确到秒（面板的 Drive Duration 也是）：17分30秒 / 1小时5分
+// 行程用时精确到秒（面板的 Drive Duration 也是）：17分30秒 / 1小时5分。
+// 和面板一样按钟表的走法向下取整（Drive Duration、速度分布的 Time 列都是截掉零头）：
+// 1008.7 秒是「16分48秒」，3:20:53 是「3小时20分」
 function durSec(sec) {
   if (sec == null || !Number.isFinite(+sec)) return fmt.DASH;
-  const s = Math.round(+sec);
+  const s = Math.floor(+sec);
   if (s < 60) return `${s}秒`;
   if (s < 3600) return `${Math.floor(s / 60)}分${s % 60 ? (s % 60) + "秒" : ""}`;
-  // 一小时以上只到分钟，按钟表的走法向下取整（3:20:53 是「3小时20分」）
+  // 一小时以上只到分钟
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   return h >= 24 ? fmt.duration(s / 60) : `${h}小时${m ? m + "分" : ""}`;
@@ -173,11 +175,6 @@ function atLeast(values, span, { lo = -Infinity, hi = Infinity, step } = {}) {
   let max = min + span;
   if (max < b) (max = Math.ceil(b / unit) * unit), (min = max - span);
   return { min: +min.toFixed(4), max: +max.toFixed(4) };
-}
-
-function signed(v, f) {
-  if (v == null || !Number.isFinite(+v)) return "";
-  return (+v > 0 ? "+" : +v < 0 ? "−" : "±") + f(Math.abs(+v));
 }
 
 // ---------------------------------------------------------------- 页面
@@ -214,6 +211,7 @@ export async function render(ctx) {
   }
 
   const rg = d.rng[0] || {};
+  const state = driveState({ end_date: r.end_date, start_date: r.start_date, last_date: rg.to_ts });
   // 页头「在 Grafana 中打开」：Drive Details 面板靠时间范围取数据（默认只看最近 12 小时），带上这次行程的起止
   if (rg.from_ts && rg.to_ts) ctx.setGrafanaVars({ from: rg.from_ts, to: rg.to_ts });
   const recovered = d.recovered[0] ? d.recovered[0].kwh : null;
@@ -231,11 +229,11 @@ export async function render(ctx) {
       <div class="pg-drive-layout">
         <div class="pg-drive-mapcol">${ui.card(ui.mapBox("pg-drive-map"), { pad: false })}</div>
         <div class="pg-drive-main">
-          ${r.incomplete ? incompleteNote() : ""}
-          ${ui.card(routeBlock(r), { pad: false })}
-          ${r.incomplete
-            ? ui.card(incompleteKv(r, rg), { title: "已记录的部分" })
-            : html`${mainStats(r, rg)}${ui.card(detailKv(r, rg, recovered), { title: "详细数据" })}`}
+          ${stateNote(state, rg)}
+          ${ui.card(routeBlock(r, state), { pad: false })}
+          ${state === "done"
+            ? html`${mainStats(r, rg)}${ui.card(detailKv(r, rg, recovered, ctx.settings), { title: "详细数据" })}`
+            : ui.card(openKv(r, rg, state), { title: "已记录的部分" })}
           <div class="pg-drive-charts" id="pg-drive-charts">${ui.skeleton("chart", { height: 200 })}</div>
           ${hasHist ? histCard() : ""}
           ${neighbors(prev, next, ctx)}
@@ -266,7 +264,7 @@ export async function render(ctx) {
       })));
       return;
     }
-    if (!mapInst) mapInst = await drawMap(ctx, r, pts.track);
+    if (!mapInst) mapInst = await drawMap(ctx, r, state, pts.track);
     await drawCharts(ctx, r, range, pts, mapInst);
   };
   await Promise.all([loadPoints(), hist]);
@@ -274,22 +272,20 @@ export async function render(ctx) {
 
 // ---------------------------------------------------------------- 上半部分
 
-function incompleteNote() {
-  return ui.card(
-    html`<div class="pg-drive-warn">
-      ${ui.icon("alert-circle-outline")}
-      <div>
-        <strong>这次行程没有结束记录</strong>
-        <p class="tm-note">TeslaMate 在行程中途停止过，只留下了开始时间和前面的一段轨迹，所以没有距离、耗电这些汇总。
-          可以照官方文档<a href="https://docs.teslamate.org/docs/maintenance/manually_fixing_data" target="_blank" rel="noopener">手动修复数据</a>。</p>
-      </div>
-    </div>`,
-    { cls: "pg-drive-warn-card" }
+// 没有结束时间的行程顶上的提示：正在行驶（蓝）/ 中途断掉（琥珀）。文字和充电详情的同一种提示对应；
+// 句子写成一行，中文句子中间换行会多出一个空格
+function stateNote(state, rg) {
+  if (state === "driving") {
+    return ui.notice(`正在行驶。下面的轨迹和曲线算到最新的位置点（${fmt.time(rg.to_ts)}），行程结束后才有距离、耗电这些汇总。`, { tone: "accent", icon: "road-variant" });
+  }
+  if (state !== "incomplete") return "";
+  return ui.notice(
+    html`这次行程没有正常结束（TeslaMate 当时可能停止了运行），下面的数字只算到最后一条记录，不计入行程列表的统计。官方文档里有<a href="${FIX_DOC}" target="_blank" rel="noopener">手动修复数据</a>的方法。`
   );
 }
 
 // 起终点：完整地址 + 时间 + 收藏点链接（面板表格里地址那一列的「Create or edit geo-fence」）
-function routeBlock(r) {
+function routeBlock(r, state) {
   const fence = (gid, lat, lng) => {
     if (gid) return html`<a class="pg-drive-fence" href="/geo-fences/${+gid}/edit">${ui.icon("map-marker")}编辑收藏点</a>`;
     if (lat == null || lng == null) return "";
@@ -307,23 +303,24 @@ function routeBlock(r) {
   </li>`;
   return html`<ol class="pg-drive-route" aria-label="路线">
     ${stop("start", r.start_place || UNKNOWN_PLACE, r.start_full, fmt.time(r.start_date), fence(r.start_geofence_id, r.start_lat, r.start_lng))}
-    ${r.incomplete
-      ? stop("end", "没有结束记录", null, "—", "")
-      : stop("end", r.end_place || UNKNOWN_PLACE, r.end_full, endTime(r.start_date, r.end_date), fence(r.end_geofence_id, r.end_lat, r.end_lng))}
+    ${state === "done"
+      ? stop("end", r.end_place || UNKNOWN_PLACE, r.end_full, endTime(r.start_date, r.end_date), fence(r.end_geofence_id, r.end_lat, r.end_lng))
+      : stop("end", state === "driving" ? "行驶中" : "没有结束记录", null, "—", "")}
   </ol>`;
 }
 
-// 没结束的行程通常只剩开始时间和一段轨迹（没有起终点位置），电量、里程从记录到的点里取；没有的项就不列了
-function incompleteKv(r, rg) {
+// 没结束的行程（正在开，或者中途断掉）只有开始时间和一段轨迹（TeslaMate 结束时才填起终点），
+// 电量、里程从记录到的点里取；没有的项就不列了
+function openKv(r, rg, state) {
   const soc0 = r.start_soc ?? rg.first_soc;
   const odo0 = r.odo_start ?? rg.first_odo;
   return ui.kv(
     [
       ["开始", fmt.dateTime(r.start_date)],
-      ["最后一个位置点", rg.to_ts ? fmt.dateTime(rg.to_ts) : null],
+      [state === "driving" ? "最新的位置点" : "最后一个位置点", rg.to_ts ? fmt.dateTime(rg.to_ts) : null],
       ["已记录的时长", rg.to_ts ? fmt.duration((rg.to_ts - r.start_date) / 60e3) : null],
       ["已记录的距离", rg.odo_dist != null ? `约 ${lenText(rg.odo_dist)}（按里程表）` : null],
-      ["电量", soc0 != null ? html`<span class="tm-num">${soc0}% → ${rg.last_soc ?? "—"}%</span>` : null],
+      ["电量", soc0 != null && rg.last_soc != null ? html`<span class="tm-num">${soc0}% → ${rg.last_soc}%</span>` : null],
       ["出发时里程表", odo0 != null ? fmt.len(odo0, 0) : null],
       ["位置点", rg.points ? `${fmt.int(rg.points)} 个` : null]
     ].filter(([, v]) => v != null)
@@ -335,9 +332,9 @@ function mainStats(r, rg) {
   const used = r.start_range != null && r.end_range != null ? r.start_range - r.end_range : null;
   return ui.stats(
     [
-      { label: "距离", icon: "road-variant", value: fmt.num(r.distance, +r.distance >= 99.95 ? 0 : 1), unit: fmt.unit.len, sub: used != null ? `续航少了 ${fmt.len(used, 0)}` : null },
+      { label: "距离", icon: "road-variant", value: r.distance, digits: lenDigits(r.distance), unit: fmt.unit.len, sub: used != null ? `续航少了 ${fmt.len(used, 0)}` : null },
       { label: "用时", icon: "clock-outline", value: durSec(r.seconds), sub: timeSpan(r.start_date, r.end_date) },
-      { label: "耗电（净）", icon: "lightning-bolt", value: fmt.num(r.energy, 1), unit: "kWh", sub: "按续航减少估算" },
+      { label: "耗电（净）", icon: "lightning-bolt", value: r.energy, digits: 1, unit: "kWh", sub: "按续航减少估算" },
       { label: "能耗（净）", icon: "leaf", value: r.consumption, unit: fmt.unit.cons, sub: per100 },
       { label: "平均速度", icon: "speedometer", value: rg.speed_avg, unit: fmt.unit.speed, sub: "位置点车速的平均" },
       { label: "最高速度", icon: "speedometer", value: r.speed_max, unit: fmt.unit.speed, sub: r.power_max != null ? `最大功率 ${fmt.kw(r.power_max)}` : null }
@@ -346,8 +343,8 @@ function mainStats(r, rg) {
   );
 }
 
-function detailKv(r, rg, recovered) {
-  const rangeLabel = api.settings && api.settings.preferredRange === "ideal" ? "续航（理想）" : "续航（表显）";
+function detailKv(r, rg, recovered, settings) {
+  const rangeLabel = settings.preferredRange === "ideal" ? "续航（理想）" : "续航（表显）";
   const socDiff = r.start_soc != null && r.end_soc != null ? r.end_soc - r.start_soc : null;
   const rangeDiff = r.start_range != null && r.end_range != null ? r.end_range - r.start_range : null;
   // 冷车时可用电量比显示电量低（「续航打折」），不一样时才单独列出来
@@ -355,9 +352,9 @@ function detailKv(r, rg, recovered) {
   const eff = r.efficiency != null && r.efficiency > 0 ? r.efficiency * 100 : null;
   return html`${ui.kv(
     [
-      ["电量", r.start_soc != null ? html`<span class="tm-num">${r.start_soc}% → ${r.end_soc}%</span> <span class="tm-muted">${signed(socDiff, (v) => v + "%")}</span>` : null],
-      usableDiffers && ["可用电量", html`<span class="tm-num">${r.start_usable}% → ${r.end_usable}%</span>`],
-      [rangeLabel, rangeDiff != null ? html`<span class="tm-num">${fmt.len(r.start_range, 0)} → ${fmt.len(r.end_range, 0)}</span> <span class="tm-muted">${signed(rangeDiff, (v) => fmt.len(v, 0))}</span>` : null],
+      ["电量", socDiff != null ? html`<span class="tm-num">${r.start_soc}% → ${r.end_soc}%</span> <span class="tm-muted">${fmt.signed(socDiff, (v) => v + "%")}</span>` : null],
+      usableDiffers && ["可用电量", r.end_usable != null ? html`<span class="tm-num">${r.start_usable}% → ${r.end_usable}%</span>` : null],
+      [rangeLabel, rangeDiff != null ? html`<span class="tm-num">${fmt.len(r.start_range, 0)} → ${fmt.len(r.end_range, 0)}</span> <span class="tm-muted">${fmt.signed(rangeDiff, (v) => fmt.len(v, 0))}</span>` : null],
       ["续航达成率", eff != null ? html`<span class="tm-num${eff >= 99 ? " tm-tone-green" : eff < 65 ? " tm-tone-amber" : ""}">${fmt.pct(eff, 1)}</span>` : null],
       // 回收电量一般只有零点几 kWh，一位小数全是「0.1」，不到 1 kWh 时留两位
       ["回收电量", recovered != null ? fmt.kwh(recovered, Math.abs(recovered) < 1 ? 2 : 1) : html`<span class="tm-muted">没有 streaming 数据</span>`],
@@ -365,33 +362,25 @@ function detailKv(r, rg, recovered) {
       ["车外平均温度", fmt.temp(r.outside_temp)],
       ["车内平均温度", fmt.temp(r.inside_temp)],
       ["最大功率 / 回收", r.power_max != null ? html`<span class="tm-num">${fmt.kw(r.power_max)} / ${r.power_min != null && r.power_min < 0 ? fmt.kw(-r.power_min) : "—"}</span>` : null],
-      ["里程表", r.odo_start != null ? html`<span class="tm-num">${fmt.len(r.odo_start, 0)} → ${fmt.len(r.odo_end, 0)}</span>` : null],
+      ["里程表", r.odo_start != null && r.odo_end != null ? html`<span class="tm-num">${fmt.len(r.odo_start, 0)} → ${fmt.len(r.odo_end, 0)}</span>` : null],
       ["开始", fmt.dateTime(r.start_date)],
       ["结束", fmt.dateTime(r.end_date)]
     ]
   )}
-  <p class="tm-note pg-drive-kv-note">续航达成率 = 实际距离 ÷ 消耗的续航，已按爬升、下降修正（和 Grafana 默认的算法一样）；
-    回收电量要有间隔 1.5 秒以内的 streaming 数据才算得出。</p>`;
+  <p class="tm-note pg-drive-kv-note">续航达成率 = 实际距离 ÷ 消耗的续航，已按爬升、下降修正（和 Grafana 默认的算法一样）；回收电量要有间隔 1.5 秒以内的 streaming 数据才算得出。</p>`;
 }
 
 // ---------------------------------------------------------------- 上一次 / 下一次
 
 function neighbors(prev, next, ctx) {
-  const cell = (row, dir) => {
-    const label = dir < 0 ? "上一次" : "下一次";
-    if (!row) return html`<div class="pg-drive-nav-cell is-empty"><span class="pg-drive-nav-label">${label}</span><span class="tm-muted">${dir < 0 ? "没有更早的行程" : "这是最近的一次"}</span></div>`;
-    return html`<a class="pg-drive-nav-cell${dir > 0 ? " is-next" : ""}" href="${ctx.href(`/stats/drives/${row.id}`)}" rel="${dir < 0 ? "prev" : "next"}">
-      <span class="pg-drive-nav-label">${dir < 0 ? ui.icon("chevron-left") : ""}${label}${dir > 0 ? ui.icon("chevron-right") : ""}</span>
-      <span class="pg-drive-nav-title">${driveTitle(row)}</span>
-      ${ui.segs([`${fmt.dateAuto(row.start_date)} ${fmt.time(row.start_date)}`, lenText(row.distance)], { cls: "pg-drive-nav-sub tm-num" })}
-    </a>`;
-  };
-  return html`<nav class="pg-drive-nav" aria-label="上一次和下一次行程">${cell(prev, -1)}${cell(next, 1)}</nav>`;
+  const cell = (row) =>
+    row && { href: ctx.href(`/stats/drives/${row.id}`), title: driveTitle(row), sub: [`${fmt.dateAuto(row.start_date)} ${fmt.time(row.start_date)}`, lenText(row.distance)] };
+  return ui.neighbors(cell(prev), cell(next), { label: "上一次和下一次行程", empty: ["没有更早的行程", "这是最近的一次"] });
 }
 
 // ---------------------------------------------------------------- 地图
 
-async function drawMap(ctx, r, track) {
+async function drawMap(ctx, r, state, track) {
   const el = ctx.root.querySelector("#pg-drive-map");
   const pts = track.map((p) => [p.latitude, p.longitude]);
   const m = await map.create(el);
@@ -407,7 +396,13 @@ async function drawMap(ctx, r, track) {
   map.marker(m, pts[0], { kind: "start", title: `出发：${r.start_place || UNKNOWN_PLACE}` });
   // 没结束的行程，最后一个点不是终点，画成圆点
   if (pts.length > 1) {
-    map.marker(m, pts[pts.length - 1], r.incomplete ? { kind: "dot", title: "最后记录的位置" } : { kind: "end", title: `到达：${r.end_place || UNKNOWN_PLACE}` });
+    map.marker(
+      m,
+      pts[pts.length - 1],
+      state === "done"
+        ? { kind: "end", title: `到达：${r.end_place || UNKNOWN_PLACE}` }
+        : { kind: "dot", title: state === "driving" ? "最新的位置" : "最后记录的位置" }
+    );
   }
   map.fit(m, [line]);
   return m;
@@ -508,7 +503,7 @@ async function drawCharts(ctx, r, range, pts, m) {
       chart.line("电量", t("battery_level", det), { color: "c4", fmt: (v) => fmt.pct(v) }),
       det.some((p) => p.usable_battery_level != null && p.usable_battery_level !== p.battery_level) &&
         chart.line("可用电量", t("usable_battery_level", det), { color: "c4", dashed: true, width: 1.5, fmt: (v) => fmt.pct(v) }),
-      chart.line(api.settings.preferredRange === "ideal" ? "理想续航" : "表显续航", t("range", det), { color: "c1", yAxisIndex: 1, fmt: (v) => fmt.len(v, 0) }),
+      chart.line(ctx.settings.preferredRange === "ideal" ? "理想续航" : "表显续航", t("range", det), { color: "c1", yAxisIndex: 1, fmt: (v) => fmt.len(v, 0) }),
       chart.line("估算续航", t("range_est", det), { color: "c3", yAxisIndex: 1, dashed: true, width: 1.5, fmt: (v) => fmt.len(v, 0) }),
       hasHeater && flagSeries("电池加热", det, "battery_heater", "c6", 2)
     ].filter(Boolean);
@@ -520,10 +515,6 @@ async function drawCharts(ctx, r, range, pts, m) {
           chart.valueAxis({ unit: fmt.unit.len, position: "right", scale: true, splitLine: { show: false } }),
           FLAG_AXIS
         ],
-        // 冬天多出「可用电量」「电池加热」两项，手机上一行放不下：图例换行（不用翻页），图往下让一行
-        ...(series.length > 3 && window.matchMedia("(max-width: 768px)").matches
-          ? { legend: { type: "plain", itemGap: 12 }, grid: { top: 56 } }
-          : {}),
         series,
         dataZoom: chart.zoom()
       })
@@ -632,22 +623,20 @@ function drawHist(ctx, histRows) {
   const rows = fillBins(histRows);
   const minLabel = rows.length > 8 ? 5 : 1;
   const u = fmt.unit.speed;
-  const hms = (s) => {
-    const v = Math.round(s);
-    return `${Math.floor(v / 3600)}:${String(Math.floor((v % 3600) / 60)).padStart(2, "0")}:${String(v % 60).padStart(2, "0")}`;
-  };
   return chart.create(el, {
     xAxis: chart.categoryAxis(rows.map((x) => fmt.int(x.speed)), { name: u, nameLocation: "end", nameGap: 6, nameTextStyle: { align: "right", verticalAlign: "top", padding: [18, 0, 0, 0] } }),
     yAxis: chart.valueAxis({ unit: "%", min: 0 }),
     tooltip: chart.tooltip((ps) => {
       const p = Array.isArray(ps) ? ps[0] : ps;
       const x = rows[p.dataIndex];
+      // 时长精确到秒：短途每档只有一两分钟，按分钟取整会把 1分41秒 和 1分31秒 都写成「2分」。
+      // fillBins 补出来的空档不写时长（「0秒」和上一行的 0% 重复）
       return chart.tipHtml(`${fmt.int(x.speed)} ${u} 左右`, [
-        { color: p.color, name: "占行程时间", value: x.pct > 0 && x.pct < 0.5 ? "<1%" : fmt.pct(x.pct) },
-        { name: "时长", value: hms(x.seconds) }
+        { color: p.color, name: "占行程时间", value: fmt.share(x.pct) },
+        x.seconds > 0 ? { name: "时长", value: durSec(x.seconds) } : null
       ]);
     }),
     // 档位多（长途 10~130）时小于 5% 的柱子不标数，不然矮柱子上的「1%」「3%」挤成一团
-    series: [chart.bars("占比", rows.map((x) => +(+x.pct).toFixed(2)), { color: "c1", label: (v) => (v >= minLabel ? fmt.pct(v) : "") })]
+    series: [chart.bars("占比", rows.map((x) => +(+x.pct).toFixed(2)), { color: "c1", label: (v) => (v >= minLabel ? fmt.share(v) : "") })]
   });
 }

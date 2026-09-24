@@ -1,7 +1,6 @@
-// 电量和里程（levels.js）、续航变化（projected-range.js）两页共用：取点、图例表、里程的位数。
+// 电量和里程（levels.js）、续航变化（projected-range.js）两页共用：取点、图例表。
 // 图例表的样式在 pages/_series.css，两页的 CSS 开头 @import 它（路由等页面 CSS 加载完才画，@import 的也算在内）。
 import { html } from "../core/ui.js";
-import * as fmt from "../core/format.js";
 
 // 查询结果 → [[时间, 值], …]，值为空的点去掉
 export const series = (rows, key) => rows.filter((r) => r[key] != null).map((r) => [r.time, r[key]]);
@@ -24,11 +23,6 @@ export function calcs(points) {
   }
   return n ? { mean: sum / n, max, min, last } : { mean: null, max: null, min: null, last: null };
 }
-
-// 里程、续航：100 以上取整，不到 100 保留 1 位（各页统一的写法）。lenNum 只要数字（统计宫格的单位另写），null → null
-const lenDigits = (v) => (v != null && Math.abs(v) < 99.95 ? 1 : 0);
-export const lenAuto = (v) => fmt.len(v, lenDigits(v));
-export const lenNum = (v) => (v == null || !Number.isFinite(v) ? null : fmt.num(v, lenDigits(v)));
 
 export const STATS3 = [
   { key: "mean", label: "平均" },

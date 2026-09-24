@@ -4,6 +4,7 @@ import * as ui from "../core/ui.js";
 import * as api from "../core/api.js";
 import * as fmt from "../core/format.js";
 import * as chart from "../core/chart.js";
+import { lenDigits, lenText } from "./_drive-item.js";
 
 export const title = "能耗";
 export const range = { default: "all" };
@@ -131,9 +132,6 @@ GROUP BY 1
 ORDER BY 2 DESC, 1
 LIMIT 3`;
 
-// 里程：≥ 100 取整，< 100 保留 1 位
-const lenD = (v) => (v != null && Math.abs(v) >= 100 ? 0 : 1);
-
 export async function render(ctx) {
   const minDist = api.oneOf(ctx.query.get("min_distance"), MIN_DISTANCES, "1");
   ctx.setGrafanaVars({ "var-min_distance": minDist });
@@ -183,7 +181,7 @@ export async function render(ctx) {
             unit: fmt.unit.cons,
             sub: gross.energy == null ? "含停车掉电" : ui.segs(["含停车掉电", fmt.kwh(gross.energy, 1)])
           },
-          { label: "统计里程", icon: "road-variant", value: dist.distance, digits: lenD(dist.distance), unit: L, sub: `${fmt.int(dist.drives)} 次行程` },
+          { label: "统计里程", icon: "road-variant", value: dist.distance, digits: lenDigits(dist.distance), unit: L, sub: `${fmt.int(dist.drives)} 次行程` },
           { label: `当前${rangeName}效率`, icon: "leaf", value: current, unit: fmt.unit.cons, sub: `每 ${L} ${rangeName}续航的电量` }
         ],
         { cols: 4 }
@@ -213,7 +211,7 @@ export async function render(ctx) {
 
   ui.onSegment(ctx.root, "min_distance", (v) => ctx.setQuery({ min_distance: v === "1" ? null : v }));
 
-  if (temps.length) await drawTemps(ctx, temps, current, rangeName);
+  if (temps.length) await drawTemps(ctx, temps, current);
 }
 
 function allButton(ctx) {
@@ -242,13 +240,13 @@ function tempTable(rows) {
         fmt: (v) => html`<div class="pg-eff-bar">${ui.bar(v, 1.15, effTone(v))}<span class="tm-num tm-tone-${effTone(v)}">${fmt.pct(v * 100, 1)}</span></div>`
       },
       { key: "consumption", label: head("能耗", fmt.unit.cons), align: "right", fmt: (v) => html`<span class="tm-strong">${fmt.int(v)}</span>` },
-      { key: "distance", label: head("里程", fmt.unit.len), align: "right", fmt: (v) => fmt.num(v, lenD(v)) },
+      { key: "distance", label: head("里程", fmt.unit.len), align: "right", fmt: (v) => fmt.num(v, lenDigits(v)) },
       { key: "speed", label: head("均速", fmt.unit.speed), align: "right", fmt: (v) => fmt.int(v) }
     ]
   });
 }
 
-async function drawTemps(ctx, rows, current, rangeName) {
+async function drawTemps(ctx, rows, current) {
   // 图上从冷到热排（表格照面板从热到冷）
   const asc = [...rows].sort((a, b) => a.temp - b.temp);
   // 柱子统一一个颜色：好坏看参考虚线就够了，表格里再按面板的阈值上色
@@ -273,7 +271,7 @@ async function drawTemps(ctx, rows, current, rangeName) {
       return chart.tipHtml(`${fmt.temp(r.temp, 0)} 左右`, [
         { color: p.color, name: "平均能耗", value: fmt.cons(r.consumption) },
         { name: "驾驶效率", value: fmt.pct(r.efficiency * 100, 1) },
-        { name: "里程", value: fmt.len(r.distance, lenD(r.distance)) },
+        { name: "里程", value: lenText(r.distance) },
         { name: "平均速度", value: fmt.speed(r.speed) }
       ]);
     }),

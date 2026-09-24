@@ -1,13 +1,13 @@
 // 行程列表（对应 Grafana「Drives」面板 Y8upc6ZRk）：
 // 顶部汇总 = 面板的「Summary of this period」，列表 = 面板的「Drive」表格（按天分组），
-// 「未完成的行程」= 面板的「Incomplete Drives」。筛选对应面板的 location / min_dist / geofence 变量。
+// 「正在行驶」「未完成的行程」= 面板的「Incomplete Drives」（面板不分这两种）。筛选对应面板的 location / min_dist / geofence 变量。
 import { html } from "../core/ui.js";
 import * as ui from "../core/ui.js";
 import * as api from "../core/api.js";
 import * as fmt from "../core/format.js";
 import * as chart from "../core/chart.js";
-import { DRIVE_ITEM_SQL, driveItem, groupByDay, lenText } from "./_drive-item.js";
-import { placeSql } from "./_shared.js";
+import { DRIVE_ITEM_SQL, driveItem, groupByDay, lenText, lenDigits } from "./_drive-item.js";
+import { placeSql, driveStateSql, FIX_DOC } from "./_shared.js";
 
 export const title = "行程";
 export const range = { default: "90d" };
@@ -16,7 +16,6 @@ export const css = true;
 // 一次取 50 条，「加载更多」再往后翻：全部范围可能有几千次行程，一次都画出来手机会卡
 const PAGE = 50;
 const DISTS = [0, 1, 5, 10, 50];
-const FIX_DOC = "https://docs.teslamate.org/docs/maintenance/manually_fixing_data";
 const INCOMPLETE_MAX = 20;
 
 // ---------------------------------------------------------------- 筛选参数（URL → 校验过的值）
@@ -55,7 +54,7 @@ left join addresses ea on ea.id = d.end_address_id
 left join geofences sg on sg.id = d.start_geofence_id
 left join geofences eg on eg.id = d.end_geofence_id`;
 
-// 汇总和面板一样：里程、时长对所有行求和；耗电 = 续航差 × 车辆能效（有续航读数的才算）；平均能耗 = 总耗电 ÷ 总里程
+// 汇总和面板一样：里程、时长对所有行求和；耗电 = 续航差 × 车辆能效（有续航读数的才算）；能耗 = 总耗电 ÷ 总里程
 const SUM_SQL = (where) => `select
   count(*) as n,
   sum(convert_km(d.distance::numeric, '$length_unit')) as distance,
@@ -98,10 +97,10 @@ export async function render(ctx) {
       sum: SUM_SQL(where),
       daily: DAILY_SQL(where),
       list: DRIVE_ITEM_SQL(where, { limit: PAGE }),
-      // 和面板一样不限时间：没有结束的行程哪天都可能有，放在列表最上面提醒
-      incomplete: DRIVE_ITEM_SQL("d.end_date is null", { incomplete: true, limit: INCOMPLETE_MAX }),
-      // 列表只列最近几条，次数单独数（面板的表格是分页列出全部）
-      incompleteN: "select count(*) as n from drives where car_id = $car_id and end_date is null",
+      // 和面板一样不限时间：没有结束的行程哪天都可能有，放在列表最上面（正在行驶的和中途断掉的分两节）
+      open: DRIVE_ITEM_SQL("d.end_date is null", { incomplete: true, limit: INCOMPLETE_MAX }),
+      // 中途断掉的只列最近几条，次数单独数（面板的表格是分页列出全部）
+      incompleteN: `select count(*) as n from drives d where d.car_id = $car_id and d.end_date is null and ${driveStateSql("d")} = 'incomplete'`,
       geofences: "select id, name from geofences order by name, id"
     },
     { signal: ctx.signal }
@@ -111,7 +110,7 @@ export async function render(ctx) {
   const total = s.n || 0;
   const geofences = d.geofences;
   const dayTotals = new Map(d.daily.map((r) => [r.day, r]));
-  const incompleteN = d.incompleteN[0] ? d.incompleteN[0].n : d.incomplete.length;
+  const open = openSections(d.open, d.incompleteN[0].n, ctx);
   const bar = filterBar(ctx, f, active, geofences);
 
   ui.render(
@@ -127,7 +126,7 @@ export async function render(ctx) {
                 : ""}
             </div>
             <div class="tm-list-main">
-              ${incompleteSection(d.incomplete, incompleteN, ctx)}
+              ${open}
               ${ui.section(`${fmt.int(total)} 次行程`, html`<div id="pg-drives-days"></div>`)}
             </div>
           </div>`
@@ -144,7 +143,7 @@ export async function render(ctx) {
                   action: ctx.range.key !== "all" ? ui.button("查看全部时间", { kind: "soft", href: ctx.href("/stats/drives", { r: "all" }) }) : null
                 })
           )}
-          ${incompleteSection(d.incomplete, incompleteN, ctx)}`}
+          ${open}`}
     `
   );
 
@@ -178,16 +177,17 @@ function summaryStats(s, total) {
   return ui.stats(
     [
       { label: "行程", icon: "map-marker-path", value: total, unit: "次", sub: `平均每次 ${lenText(dist / total)}` },
-      { label: "里程", icon: "road-variant", value: fmt.num(dist, dist >= 99.95 ? 0 : 1), unit: fmt.unit.len, sub: `最远一次 ${lenText(s.distance_max)}` },
+      { label: "里程", icon: "road-variant", value: dist, digits: lenDigits(dist), unit: fmt.unit.len, sub: `最远一次 ${lenText(s.distance_max)}` },
       {
         label: "驾驶时长",
         icon: "clock-outline",
-        // 合计时长用小时数（「54.5 小时」比「2天6小时」好比较）
-        ...(s.duration >= 60 ? { value: fmt.num(s.duration / 60, 1), unit: "小时" } : { value: s.duration, unit: "分钟" }),
+        // 累计驾驶时长按小时说：「54.5 小时」比「2天6小时」好比较
+        ...fmt.hoursStat(s.duration),
         sub: s.duration > 0 ? `平均 ${fmt.speed(dist / (s.duration / 60))}` : null
       },
-      { label: "耗电（净）", icon: "lightning-bolt", value: fmt.num(s.energy, 1), unit: "kWh", sub: "按续航减少估算" },
-      { label: "平均能耗（净）", icon: "leaf", value: cons, unit: fmt.unit.cons, sub: per100 },
+      // 「全部」范围可能上万度，320 宽放不下小数
+      { label: "耗电（净）", icon: "lightning-bolt", value: s.energy, digits: s.energy >= 10000 ? 0 : 1, unit: "kWh", sub: "按续航减少估算" },
+      { label: "能耗（净）", icon: "leaf", value: cons, unit: fmt.unit.cons, sub: per100 },
       { label: "最高速度", icon: "speedometer", value: s.speed_max, unit: fmt.unit.speed }
     ],
     { cols: 3 }
@@ -282,17 +282,27 @@ function bindFilters(ctx, f) {
   });
 }
 
-// ---------------------------------------------------------------- 未完成的行程
+// ---------------------------------------------------------------- 正在行驶 / 未完成的行程（不看时间范围和筛选）
 
-function incompleteSection(rows, n, ctx) {
-  if (!rows.length) return "";
-  return ui.section(
-    "未完成的行程",
-    html`${ui.card(ui.list(rows.map((r) => driveItem(r, ctx))), { pad: false, cls: "pg-drives-incomplete" })}
-      <p class="tm-note pg-drives-incomplete-note">TeslaMate 在这些行程中途停止过，没有结束记录，所以不计入里程和耗电。
-        可以照官方文档<a href="${FIX_DOC}" target="_blank" rel="noopener">手动修复数据</a>。</p>`,
-    { sub: `${n} 次${n > rows.length ? `（这里列出最近 ${rows.length} 次）` : ""}，不受时间范围和筛选影响` }
-  );
+// 没有结束时间的行程：最近还有新位置点的是正在开（蓝色），很久没有新点的是 TeslaMate 中途停过（琥珀色，要手动修）。
+// n：中途断掉的总次数（列表只取了最近 INCOMPLETE_MAX 条）。说明文字写成一行：中文句子中间换行会多出一个空格（「。 官方」）
+function openSections(rows, n, ctx) {
+  const live = rows.filter((r) => r.state === "driving");
+  const broken = rows.filter((r) => r.state !== "driving");
+  // 两条查询各自判断「最近 20 分钟有没有新位置点」，正好跨过阈值时可能差一次：以列出来的为准
+  const total = Math.max(n, broken.length);
+  return html`${live.length
+    ? ui.section("正在行驶", ui.card(ui.list(live.map((r) => driveItem(r, ctx))), { pad: false, cls: "pg-drives-live" }), {
+        sub: "还没结束，不计入下面的统计"
+      })
+    : ""}${broken.length
+    ? ui.section(
+        "未完成的行程",
+        html`${ui.card(ui.list(broken.map((r) => driveItem(r, ctx))), { pad: false, cls: "pg-drives-incomplete" })}
+          <p class="tm-note pg-drives-incomplete-note">TeslaMate 没有记录到${total > 1 ? "这几次" : "这次"}行程的结束（当时可能停止了运行），所以不计入统计。官方文档里有<a href="${FIX_DOC}" target="_blank" rel="noopener">手动修复数据</a>的方法。</p>`,
+        { sub: `${total} 次${total > broken.length ? `（这里列出最近 ${broken.length} 次）` : ""}，不受时间范围和筛选影响` }
+      )
+    : ""}`;
 }
 
 // ---------------------------------------------------------------- 按天分组的列表

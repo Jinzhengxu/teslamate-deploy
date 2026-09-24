@@ -54,14 +54,18 @@ export function render(el, tpl) {
   return el;
 }
 
-// 画完之后要挂 JS 的公共部件（现在只有宽表格的滚动渐隐）。render 和 pager 追加时自动调用；
-// 页面自己用 innerHTML / insertAdjacentHTML 插的表格没有渐隐提示，别的照常
+// 画完之后要挂 JS 的公共部件：宽表格的滚动渐隐、统计数字放不下时缩小字号。render 和 pager 追加时自动调用；
+// 页面自己用 innerHTML / insertAdjacentHTML 插的表格、统计宫格没有这两样，别的照常
 function hydrate(el) {
-  if (!fadeRO || !el.querySelectorAll) return;
-  for (const w of el.querySelectorAll(".tm-table-wrap")) {
-    fadeRO.observe(w);
-    if (w.firstElementChild) fadeRO.observe(w.firstElementChild);
+  if (!el.querySelectorAll) return;
+  if (fadeRO) {
+    for (const w of el.querySelectorAll(".tm-table-wrap")) {
+      fadeRO.observe(w);
+      if (w.firstElementChild) fadeRO.observe(w.firstElementChild);
+    }
   }
+  // 开始观察时 ResizeObserver 会先通知一次，第一次量也在那里
+  if (fitRO) for (const v of el.querySelectorAll(".tm-stat-value")) fitRO.observe(v);
 }
 
 // 属性串：{ "data-x": 1, "aria-label": "…" } → ` data-x="1" aria-label="…"`（值会转义；null / false 跳过，true 输出空值）。
@@ -170,8 +174,10 @@ export function button(label, { href, kind, icon: ic, small, attrs = {} } = {}) 
 // ---------------------------------------------------------------- 统计数字宫格
 
 // items: [{ label, value, unit, sub, tone, icon, href, digits }]
-// value 是数字时按 digits 位小数格式化（默认 0），字符串原样显示，null → —
-export function stats(items, { cols } = {}) {
+// value 是数字时按 digits 位小数格式化（默认 0），字符串原样显示，null → —。
+// 数字在格子里放不下时（窄手机上「14% → 100%」这种宽写法）自动缩小字号到正好放下，不截成「14% → 10…」（见 fitStat）。
+// dense: true —— 手机上收紧间距、内边距和数字字号：列表页左栏的汇总用，首屏多露出几行记录
+export function stats(items, { cols, dense } = {}) {
   const cells = items.filter(Boolean).map((it) => {
     const v = typeof it.value === "number" ? fmt.num(it.value, it.digits ?? 0) : it.value == null || it.value === "" ? "—" : it.value;
     const body = html`
@@ -182,8 +188,37 @@ export function stats(items, { cols } = {}) {
       ${it.sub != null && it.sub !== "" ? html`<div class="tm-stat-sub">${it.sub}</div>` : ""}`;
     return it.href ? html`<a class="tm-stat" href="${it.href}">${body}</a>` : html`<div class="tm-stat">${body}</div>`;
   });
-  return html`<div class="tm-stats${cols ? " is-" + cols : ""}">${cells}</div>`;
+  return html`<div class="tm-stats${cols ? " is-" + cols : ""}${dense ? " is-dense" : ""}">${cells}</div>`;
 }
+
+// 统计数字放不下时缩小字号：数字那一段（第一个 span）比格子里留给它的宽，就按比例缩到正好放下，最小缩到 0.6 倍，
+// 再小就照常省略号截断。字宽跟着系统字体变，只能画出来再量；格子宽度变了（转屏、拖窗口）由 fitRO 重新量
+function fitStat(box) {
+  const v = box.firstElementChild;
+  // 绝大多数格子放得下，也没缩过：什么都不改，省得每格都重排一次
+  if (!v || (!v.style.fontSize && v.scrollWidth <= v.clientWidth)) return;
+  v.style.fontSize = "";
+  // 量出来的宽度是取整的，按比例缩一次可能还差 1px：再缩一点点
+  for (let i = 0; i < 3 && v.scrollWidth > v.clientWidth; i++) {
+    const cur = parseFloat(v.style.fontSize) || 1;
+    const next = Math.max(0.6, Math.floor(cur * (v.clientWidth / v.scrollWidth) * 100) / 100 - (i ? 0.02 : 0));
+    if (next >= cur) break;
+    v.style.fontSize = next + "em";
+  }
+}
+
+const fitRO =
+  typeof ResizeObserver === "function"
+    ? new ResizeObserver((entries) => {
+        for (const en of entries) {
+          if (!en.target.isConnected) {
+            fitRO.unobserve(en.target);
+            continue;
+          }
+          fitStat(en.target);
+        }
+      })
+    : null;
 
 // ---------------------------------------------------------------- 列表
 
@@ -454,6 +489,30 @@ export function details(title, body, { open, sub, icon: ic, id, cls, card: asCar
     }</span>${icon("chevron-down", { cls: "tm-details-chev" })}</summary>
     <div class="tm-details-body">${body}</div>
   </details>`;
+}
+
+// 提示卡：详情页顶上「正在充电」「这次行程没有正常结束」这类说明。浅色底、没有边框和阴影（和数据卡片区分开），左边一个图标。
+// body：文字或 Html（一句话写成一行：中文句子中间换行会多出一个空格）；tone：amber（默认）/ green / accent；icon：图标名
+export function notice(body, { tone: t = "amber", icon: ic = "alert-circle-outline" } = {}) {
+  return html`<div class="tm-notice is-${tone(t) || "amber"}">${icon(ic)}<p>${body}</p></div>`;
+}
+
+// 详情页底部的「上一次 / 下一次」：左右两格，左边「‹ 上一次」、右边「下一次 ›」（右对齐）。
+// prev / next：{ href, title（最多两行）, sub（几段文字的数组，按 ui.segs 折行：「9月1日 · 7.0 kWh」） }，没有时给 null；
+// opts：{ label（读屏用的导航名，「上一次和下一次行程」）, empty: [没有上一次时的文字, 没有下一次时的文字] }
+export function neighbors(prev, next, { label, empty: none = ["没有更早的了", "这是最近的一次"] } = {}) {
+  const cell = (it, dir) => {
+    const name = dir < 0 ? "上一次" : "下一次";
+    if (!it) {
+      return html`<div class="tm-neighbor is-empty"><span class="tm-neighbor-label">${name}</span><span class="tm-muted">${none[dir < 0 ? 0 : 1]}</span></div>`;
+    }
+    return html`<a class="tm-neighbor${dir > 0 ? " is-next" : ""}" href="${it.href}" rel="${dir < 0 ? "prev" : "next"}">
+      <span class="tm-neighbor-label">${dir < 0 ? icon("chevron-left") : ""}${name}${dir > 0 ? icon("chevron-right") : ""}</span>
+      <span class="tm-neighbor-title">${it.title}</span>
+      ${it.sub ? segs(it.sub, { cls: "tm-neighbor-sub tm-num" }) : ""}
+    </a>`;
+  };
+  return html`<nav class="tm-neighbors"${label ? raw(` aria-label="${esc(label)}"`) : ""}>${cell(prev, -1)}${cell(next, 1)}</nav>`;
 }
 
 // 排行榜：名次徽标、名字（最多两行）、数值、横条、小字。超过 shown 条时先收起，底下「展开全部 N 个」。

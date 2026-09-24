@@ -1295,6 +1295,21 @@ a.tm-stat:hover {
   }
 }
 
+/* 紧凑的宫格（ui.stats 的 dense）：列表页左栏的汇总在手机上收紧一点，一打开就能看到记录（390×844 首屏多露出一行） */
+@media screen and (max-width: 768px) {
+  .tm-stats.is-dense {
+    gap: 8px;
+  }
+
+  .tm-stats.is-dense .tm-stat {
+    padding: 9px 12px 10px;
+  }
+
+  .tm-stats.is-dense .tm-stat-value {
+    font-size: 20px;
+  }
+}
+
 /* 语气色：只用于数值文字，用各色的 -text 档（对比度够） */
 .tm-tone-accent {
   color: var(--tm-accent) !important;
@@ -2617,6 +2632,152 @@ html[data-theme="dark"] .tm-map .leaflet-tile-pane {
   }
 }
 
+/* ------------------------------------------------------------------ 提示卡（ui.notice）
+   「正在充电」「没有正常结束」这类说明：浅色底，边框透明、不要阴影，和数据卡片区分开；内边距和 .tm-card.is-pad 一样 */
+
+.tm-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid transparent;
+  border-radius: var(--tm-r-lg);
+  background: var(--tm-amber-soft);
+  color: var(--tm-text);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+@media screen and (min-width: 769px) {
+  .tm-notice {
+    padding: 20px;
+  }
+}
+
+.tm-notice > .tm-svg {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  color: var(--tm-amber-text);
+}
+
+.tm-notice > p {
+  min-width: 0;
+}
+
+.tm-notice a {
+  font-weight: 500;
+}
+
+.tm-notice.is-green {
+  background: var(--tm-green-soft);
+}
+
+.tm-notice.is-green > .tm-svg {
+  color: var(--tm-green-text);
+}
+
+.tm-notice.is-accent {
+  background: var(--tm-accent-soft);
+}
+
+.tm-notice.is-accent > .tm-svg {
+  color: var(--tm-accent);
+}
+
+/* ------------------------------------------------------------------ 上一次 / 下一次（ui.neighbors） */
+
+.tm-neighbors {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.tm-neighbor {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--tm-line);
+  border-radius: var(--tm-r-md);
+  background: var(--tm-surface);
+  box-shadow: var(--tm-shadow);
+  color: var(--tm-text-2);
+  transition: background-color 0.12s;
+}
+
+a.tm-neighbor:hover {
+  background: var(--tm-surface-2);
+}
+
+a.tm-neighbor:active {
+  background: var(--tm-surface-3);
+}
+
+.tm-neighbor.is-next {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.tm-neighbor.is-empty {
+  box-shadow: none;
+  background: transparent;
+  font-size: 13px;
+}
+
+.tm-neighbor-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--tm-accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tm-neighbor.is-empty .tm-neighbor-label {
+  color: var(--tm-text-hint);
+}
+
+.tm-neighbor-label .tm-svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* 地点、行程标题最多两行：超充站的名字长，能区分的部分在最后 */
+.tm-neighbor-title {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--tm-text);
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* 「1月9日 17:25 · 8.2 km」是 ui.segs：320 宽一行放不下时后一段整段换到下一行，行首不带「·」 */
+.tm-neighbor-sub {
+  max-width: 100%;
+  color: var(--tm-text-hint);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+/* 右边那格是右对齐的：分隔点改画在每段的右边，每行最后一段的点落在盒子外面被裁掉（.tm-segs 默认画在左边） */
+.tm-neighbor.is-next .tm-neighbor-sub {
+  justify-content: flex-end;
+}
+
+.tm-neighbor.is-next .tm-neighbor-sub > *::before {
+  right: -1em;
+  left: auto;
+}
+
 /* ------------------------------------------------------------------ 排行榜（ui.rank） */
 
 .tm-rank {
@@ -2748,6 +2909,15 @@ a.tm-rank-name:hover {
 
   .tm-list-layout:not(.is-wide) .tm-list-main > .tm-section:first-child .tm-section-head {
     margin-top: -2px;
+  }
+}
+
+/* .is-sticky：左栏不高（筛选 + 汇总）时跟着滚动停在顶上，翻到列表哪里都看得到汇总、改得了筛选。
+   窗口矮的时候不停靠：筛选面板展开后左栏可能比窗口还高，下半截会一直看不到 */
+@media screen and (min-width: 1024px) and (min-height: 700px) {
+  .tm-list-layout.is-sticky:not(.is-wide) > .tm-list-aside {
+    position: sticky;
+    top: 76px;
   }
 }
 
@@ -3119,6 +3289,12 @@ a.tm-rank-name:hover {
   white-space: nowrap;
 }
 
+/* 放在折叠区里（ui.details）时去掉外面那圈留白、链接本身的左右内边距伸到两边：文字和折叠区标题的图标对齐 */
+.tm-details-body > .tm-links {
+  margin: 0 -10px;
+  padding: 0;
+}
+
 /* 手机上两列放不下英文名，只留中文 */
 @media screen and (max-width: 768px) {
   .tm-links a small {
@@ -3216,32 +3392,4 @@ a.tm-rank-name:hover {
   .tm-only-mobile {
     display: none !important;
   }
-}
-
-/* 组件样板页（/stats/_gallery，开发用） */
-.tm-gallery-icons {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
-  gap: 6px;
-}
-
-.tm-gallery-icons div {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 10px 4px;
-  overflow: hidden;
-  border-radius: 10px;
-  background: var(--tm-surface-2);
-  color: var(--tm-text-hint);
-  font-size: 10.5px;
-  text-align: center;
-  word-break: break-all;
-}
-
-.tm-gallery-icons .tm-svg {
-  width: 22px;
-  height: 22px;
-  color: var(--tm-text);
 }

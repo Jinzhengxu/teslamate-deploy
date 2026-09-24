@@ -5,8 +5,8 @@ import * as api from "../core/api.js";
 import * as fmt from "../core/format.js";
 import * as chart from "../core/chart.js";
 import * as map from "../core/map.js";
-import { chargeKind, chargeState, spanText } from "./_charge-item.js";
-import { placeSql, placeFullSql, UNKNOWN_PLACE } from "./_shared.js";
+import { chargeKind, spanText } from "./_charge-item.js";
+import { placeSql, placeFullSql, UNKNOWN_PLACE, chargeState, statePill, FIX_DOC } from "./_shared.js";
 
 export const title = "充电详情";
 export const range = null;
@@ -59,7 +59,7 @@ pw as (
   from charges cross join ph where charging_process_id = ${id}
 )
 select
-  cp.id, cp.start_date, cp.end_date, cp.end_date is null as incomplete, cp.duration_min,
+  cp.id, cp.start_date, cp.end_date, cp.duration_min,
   ${placeSql("g", "a")} as place,
   ${placeFullSql("g", "a")} as place_full,
   nullif(concat_ws(', ', a.name, nullif(concat(a.road, a.house_number), ''), a.county, a.city), '') as address,
@@ -122,9 +122,13 @@ function phasesText(r) {
   return PHASES[n] || `${fmt.num(n, n % 1 ? 2 : 0)} 相`;
 }
 
-// 「9月21日 周日 23:06–次日 02:52」；没结束的写「… 23:09 开始」
-function whenText(start, end) {
-  return end == null ? `${fmt.day(start)} ${fmt.time(start)} 开始` : `${fmt.day(start)} ${spanText(start, end)}`;
+// 「9月21日 周日 23:06–次日 02:52」；正在充的写「… 17:44 开始」。
+// 中途断掉的写出记录到的那一段、再注明没有结束记录：只写「开始」看起来就像还在充
+function whenText(r, state) {
+  const day = fmt.day(r.start_date);
+  if (state === "charging") return `${day} ${fmt.time(r.start_date)} 开始`;
+  if (state === "incomplete") return ui.segs([`${day} ${spanText(r.start_date, r.last_date)}`, "没有结束记录"]);
+  return `${day} ${spanText(r.start_date, r.end_date)}`;
 }
 
 function geofenceLink(r) {
@@ -160,9 +164,9 @@ function heroHtml(r, state) {
             ${full ? html`<p class="pg-charge-addr">${full}</p>` : ""}
           </div>
         </div>
-        <p class="pg-charge-when tm-num">${whenText(r.start_date, r.end_date)}</p>
+        <p class="pg-charge-when tm-num">${whenText(r, state)}</p>
         <div class="tm-flex pg-charge-tags">
-          ${state === "charging" ? ui.pill("充电中", "green") : state === "incomplete" ? ui.pill("未完成", "amber") : ""}
+          ${statePill(state)}
           ${ui.pill(r.charge_type === "AC" ? "交流慢充" : r.supercharger ? "特斯拉超充" : "直流快充", kind.tone)}
           ${cable ? ui.pill(cable) : ""}
           ${ph ? ui.pill(r.current_max ? `${ph} ${r.current_max} A` : ph) : ""}
@@ -189,11 +193,12 @@ function statsHtml(r, state) {
       {
         label: "充入电量",
         icon: "battery-charging-high",
-        value: fmt.num(r.energy_added, 2),
+        value: r.energy_added,
+        digits: 2,
         unit: "kWh",
         sub: r.energy_used != null ? `从电网取 ${fmt.kwh(r.energy_used, 2)}` : state === "charging" ? "结束后才有用电量" : "用电量没有记录"
       },
-      { label: "充电效率", icon: "flash-outline", value: r.efficiency != null ? fmt.num(r.efficiency, 1) : null, unit: "%", sub: loss != null ? `损耗 ${fmt.kwh(loss, 2)}` : null },
+      { label: "充电效率", icon: "flash-outline", value: r.efficiency, digits: 1, unit: "%", sub: loss != null ? `损耗 ${fmt.kwh(loss, 2)}` : null },
       {
         label: "费用",
         icon: "cash-multiple",
@@ -216,33 +221,25 @@ function statsHtml(r, state) {
       {
         label: "续航增加",
         icon: "gauge",
-        value: rangeDelta != null ? (rangeDelta >= 0 ? "+" : "") + fmt.num(rangeDelta, 0) : null,
+        value: rangeDelta != null ? fmt.signed(rangeDelta, 0) : null,
         unit: fmt.unit.len,
         sub: r.start_range != null && r.end_range != null ? `${fmt.num(r.start_range, 0)}→${fmt.len(r.end_range, 0)}` : null
       },
-      { label: "平均功率", icon: "lightning-bolt", value: fmt.num(r.power_avg, 1), unit: "kW", sub: r.power_max != null ? `最高 ${fmt.kw(r.power_max)}` : null },
-      { label: "车外温度", icon: "thermometer", value: r.temp_avg != null ? fmt.num(r.temp_avg, 1) : null, unit: fmt.unit.temp, sub: "充电时的平均值" }
+      { label: "平均功率", icon: "lightning-bolt", value: r.power_avg, digits: 1, unit: "kW", sub: r.power_max != null ? `最高 ${fmt.kw(r.power_max)}` : null },
+      { label: "车外温度", icon: "thermometer", value: r.temp_avg, digits: 1, unit: fmt.unit.temp, sub: "充电时的平均值" }
     ],
     { cols: 2 }
   );
 }
 
-// 和行程详情的上一次 / 下一次一个样子：小字「‹ 上一次」、地点（最多两行，超充站的名字长，能区分的部分在最后）、日期和充入电量
+// 上一次 / 下一次（和行程详情同一个核心部件）：地点、日期和充入电量
 function navHtml(r, ctx) {
-  const cell = (id, ms, place, energy, dir) => {
-    const label = dir < 0 ? "上一次" : "下一次";
-    if (id == null) {
-      return html`<div class="pg-charge-nav-cell is-empty"><span class="pg-charge-nav-label">${label}</span><span class="tm-muted">${dir < 0 ? "没有更早的充电" : "这是最近的一次"}</span></div>`;
-    }
-    return html`<a class="pg-charge-nav-cell${dir > 0 ? " is-next" : ""}" href="${ctx.href(`/stats/charges/${id}`)}" rel="${dir < 0 ? "prev" : "next"}">
-      <span class="pg-charge-nav-label">${dir < 0 ? ui.icon("chevron-left") : ""}${label}${dir > 0 ? ui.icon("chevron-right") : ""}</span>
-      <span class="pg-charge-nav-title">${place || UNKNOWN_PLACE}</span>
-      <span class="pg-charge-nav-sub tm-num">${fmt.dateAuto(ms)}${energy != null ? ` · ${fmt.kwh(energy, 1).replace(" ", "\u00a0")}` : ""}</span>
-    </a>`;
-  };
-  return html`<nav class="pg-charge-nav" aria-label="上一次和下一次充电">
-    ${cell(r.prev_id, r.prev_date, r.prev_place, r.prev_energy, -1)}${cell(r.next_id, r.next_date, r.next_place, r.next_energy, 1)}
-  </nav>`;
+  const cell = (id, ms, place, energy) =>
+    id != null && { href: ctx.href(`/stats/charges/${id}`), title: place || UNKNOWN_PLACE, sub: [fmt.dateAuto(ms), energy != null && fmt.kwh(energy, 1)] };
+  return ui.neighbors(cell(r.prev_id, r.prev_date, r.prev_place, r.prev_energy), cell(r.next_id, r.next_date, r.next_place, r.next_energy), {
+    label: "上一次和下一次充电",
+    empty: ["没有更早的充电", "这是最近的一次"]
+  });
 }
 
 // 连续开着电池加热的时间段 → markArea。画到关掉加热的那一条（和 Grafana 的阶梯线一样），
@@ -337,21 +334,10 @@ export async function render(ctx) {
     ctx.root,
     html`
       ${state === "charging"
-        ? ui.card(
-            html`<div class="pg-charge-warn is-live">
-              ${ui.icon("ev-station")}
-              <p>正在充电。下面的数字算到最新一条记录（${fmt.time(r.last_date ?? r.start_date)}），充电结束后才计入充电列表的统计。</p>
-            </div>`,
-            { cls: "pg-charge-warn-card is-live" }
-          )
+        ? ui.notice(`正在充电。下面的数字算到最新一条记录（${fmt.time(r.last_date ?? r.start_date)}），充电结束后才计入充电列表的统计。`, { tone: "green", icon: "ev-station" })
         : state === "incomplete"
-          ? ui.card(
-              html`<div class="pg-charge-warn">
-                ${ui.icon("alert-circle-outline")}
-                <p>这次充电没有正常结束（TeslaMate 当时可能停止了运行），下面的数字只算到最后一条记录，不计入充电列表的统计。
-                  官方文档里有<a href="https://docs.teslamate.org/docs/maintenance/manually_fixing_data" target="_blank" rel="noopener">手动修复数据</a>的方法。</p>
-              </div>`,
-              { cls: "pg-charge-warn-card" }
+          ? ui.notice(
+              html`这次充电没有正常结束（TeslaMate 当时可能停止了运行），下面的数字只算到最后一条记录，不计入充电列表的统计。官方文档里有<a href="${FIX_DOC}" target="_blank" rel="noopener">手动修复数据</a>的方法。`
             )
           : ""}
       <div class="tm-grid-2 pg-charge-top">
@@ -403,7 +389,7 @@ export async function render(ctx) {
   }
 
   const curve = curveAvg(rows);
-  // 横轴只画充过的那一段电量，两端取到 5 / 10 / 20 的整数倍（刻度间隔由核心按两端挑）
+  // 横轴只画充过的那一段电量，两端取到 5 / 10 / 20 的整数倍；电量是整数，刻度也只要整数（integer：65–75% 不会按 2.5 一格）
   const socLo = Math.min(...pts.map((p) => p[0]), r.start_soc ?? 100);
   const socHi = Math.max(...pts.map((p) => p[0]), r.end_soc ?? 0);
   const socStep = socHi - socLo <= 25 ? 5 : socHi - socLo <= 50 ? 10 : 20;
@@ -434,7 +420,7 @@ export async function render(ctx) {
   if (pts.length) {
     jobs.push(
       chart.create(ctx.root.querySelector("#pg-charge-curve"), {
-        xAxis: chart.valueAxis({ unit: "%", min: socMin, max: socMax, splitLine: { show: false } }),
+        xAxis: chart.valueAxis({ unit: "%", min: socMin, max: socMax, integer: true, splitLine: { show: false } }),
         yAxis: chart.valueAxis({ unit: "kW", min: 0 }),
         series: [
           { type: "scatter", name: "每条记录", data: pts, symbolSize: 5, itemStyle: { color: `@${powerColor}/0.45`, borderWidth: 0 } },

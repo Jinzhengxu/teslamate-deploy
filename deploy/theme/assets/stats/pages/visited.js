@@ -5,6 +5,7 @@ import * as ui from "../core/ui.js";
 import * as api from "../core/api.js";
 import * as fmt from "../core/format.js";
 import * as map from "../core/map.js";
+import { lenDigits } from "./_drive-item.js";
 
 export const title = "足迹";
 export const range = { default: "90d" };
@@ -98,14 +99,17 @@ export async function render(ctx) {
           {
             label: "里程",
             icon: "road-variant",
-            value: fmt.num(m.mileage, m.mileage != null && m.mileage < 100 ? 1 : 0),
+            value: m.mileage,
+            digits: lenDigits(m.mileage),
             unit: fmt.unit.len,
             sub: m.drives ? `${fmt.int(m.drives)} 次行程` : "没有行程"
           },
           {
             label: "充入电量",
             icon: "battery-charging-high",
-            value: fmt.num(e.added, 1),
+            value: e.added,
+            // 「全部」范围可能上万度，一位小数在 320 宽的格子里放不下
+            digits: e.added >= 10000 ? 0 : 1,
             unit: "kWh",
             // 面板的「Total Energy used」（从电网取的电）
             sub: e.used != null ? `从电网取 ${fmt.kwh(e.used, 1)}` : "没有充电"
@@ -113,7 +117,8 @@ export async function render(ctx) {
           {
             label: "充电效率",
             icon: "flash-outline",
-            value: fmt.num(e.efficiency, 1),
+            value: e.efficiency,
+            digits: 1,
             unit: "%",
             sub: e.n ? "充入 ÷ 用电" : null
           },

@@ -2,7 +2,12 @@
  * 统计页的外壳和路由：
  *   启动 → 读 Grafana 数据源、TeslaMate 设置和车辆 → 按主题设置配色 → 画外壳（顶栏 / 手机底栏 / 页头）
  *   → 按路由加载 pages/ 下的模块，调它的 render(ctx)。
- * 页面模块的约定见 pages/registry.js 和 CORE_API.md。
+ * 路由表和每项的字段见 pages/registry.js 的注释。页面模块（pages/<名字>.js）导出：
+ *   render(ctx)  画页面（必须）。ctx 的字段见下面 show() 里的 ctx；抛出的错误由外壳显示成错误卡片
+ *   title        页头标题（不写用路由表的 title）；详情页加载完再用 ctx.setTitle() 改
+ *   css          true 时先加载同名的 .css 再调 render
+ *   range        时间范围：{ default: key 或 (查询参数) => key, auto?: async (actx) => key }，不写就没有范围条（见 show() 里的注释）
+ *   skeleton     () => Html，有 range.auto 时外壳等默认范围算出来之前画的骨架（不写就是通用的「统计 + 列表」），和 render 一开始画的一样才不会跳
  */
 import * as api from "./core/api.js";
 import * as fmt from "./core/format.js";
@@ -503,7 +508,7 @@ async function show({ scroll = 0, restore = false, bust = false } = {}) {
         });
       } else {
         renderHead({ title, route, car, rangePending: true });
-        render(view, ui.skeleton(["stats", "list"]));
+        render(view, typeof mod.skeleton === "function" ? mod.skeleton() : ui.skeleton(["stats", "list"]));
         const key = await auto;
         if (token !== seq) return;
         if (key) def = key;
