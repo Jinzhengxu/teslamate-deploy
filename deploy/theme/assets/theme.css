@@ -1,0 +1,2704 @@
+/*
+ * TeslaMate 换肤 —— 由 deploy/theme/nginx/teslamate-theme.conf 注入到每个页面，叠加在原版 app.css 之上。
+ *
+ * 约定：
+ *   - 只改样式，不改 TeslaMate 的 HTML 结构。选择器尽量挂在它模板里稳定的 class / 属性上，
+ *     升级 TeslaMate 后万一哪里对不上，最坏情况是那一块退回原版样子，不会坏功能。
+ *   - 亮 / 暗两套配色都跟着 TeslaMate 自己的「设置 → 主题」走（<html data-theme>）。
+ *   - 断点和 Bulma 一致：手机 ≤768px，平板 769–1023px，桌面 ≥1024px（导航栏在这里切换）。
+ *   - 不加载任何外部资源（字体、图片都不从 CDN 拿），国内打开不会卡。
+ */
+
+/* ------------------------------------------------------------------ 设计变量 */
+
+:root {
+  --tm-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "Noto Sans CJK SC", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --tm-font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", Roboto, sans-serif;
+
+  --tm-r-xl: 22px;
+  --tm-r-lg: 18px;
+  --tm-r-md: 14px;
+  --tm-r-sm: 10px;
+
+  --tm-tabbar-h: 58px;
+  --tm-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* 亮色（默认） */
+  --tm-bg: #f2f3f5;
+  --tm-surface: #ffffff;
+  --tm-surface-2: #f4f5f7;
+  --tm-surface-3: #e9ebef;
+  --tm-line: rgba(17, 24, 39, 0.08);
+  --tm-line-strong: rgba(17, 24, 39, 0.14);
+  --tm-text: #111318;
+  --tm-text-2: #5c6270;
+  --tm-text-3: #8e939d; /* 只用于装饰（分隔符、描边），不用于要读的字 */
+  --tm-text-hint: #676d7a; /* 次要但要能读的字：占位符、说明、未选中的标签 */
+  --tm-accent: #3059c9;
+  --tm-accent-hover: #2a4fb5;
+  --tm-accent-soft: rgba(48, 89, 201, 0.11);
+  --tm-green: #17a34a;
+  --tm-green-soft: rgba(23, 163, 74, 0.14);
+  --tm-green-text: #15803d;
+  --tm-amber: #d97706;
+  --tm-amber-text: #b45309;
+  --tm-amber-soft: rgba(217, 119, 6, 0.12);
+  --tm-red: #b91c1c;
+  --tm-red-soft: rgba(185, 28, 28, 0.09);
+  /* 实心按钮的底色和字色：白字对比度都 ≥ 4.5:1 */
+  --tm-on-fill: #fff;
+  --tm-accent-fill: #3059c9;
+  --tm-accent-fill-hover: #2a4fb5;
+  --tm-green-fill: #15803d;
+  --tm-amber-fill: #b45309;
+  --tm-red-fill: #b91c1c;
+  --tm-switch-off: #e3e5e9;
+  --tm-track: rgba(17, 24, 39, 0.08);
+  --tm-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 6px 20px rgba(16, 24, 40, 0.06);
+  --tm-shadow-pop: 0 12px 40px rgba(16, 24, 40, 0.16), 0 2px 6px rgba(16, 24, 40, 0.06);
+  --tm-glass: rgba(242, 243, 245, 0.82);
+  --tm-glass-strong: rgba(255, 255, 255, 0.9);
+  --tm-tooltip-bg: #1d2027;
+  --tm-tooltip-fg: #f5f6f8;
+  /* 浏览器地址栏 / 状态栏的颜色，theme.js 读它写进 <meta name="theme-color"> */
+  --tm-chrome: #f2f3f5;
+
+  --bulma-family-primary: var(--tm-font);
+  --bulma-family-sans-serif: var(--tm-font);
+  --bulma-body-background-color: var(--tm-bg);
+  --bulma-text: var(--tm-text-2);
+  --bulma-text-strong: var(--tm-text);
+  --bulma-link: var(--tm-accent);
+  --bulma-link-text: var(--tm-accent);
+  --bulma-link-text-active: var(--tm-accent);
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  --tm-bg: #0b0c0e;
+  --tm-surface: #16181c;
+  --tm-surface-2: #1e2126;
+  --tm-surface-3: #272b31;
+  --tm-line: rgba(255, 255, 255, 0.07);
+  --tm-line-strong: rgba(255, 255, 255, 0.13);
+  --tm-text: #f2f3f5;
+  --tm-text-2: #a2a8b4;
+  --tm-text-3: #6d7380;
+  --tm-text-hint: #8b919d;
+  --tm-accent: #6f8fff;
+  --tm-accent-hover: #86a1ff;
+  --tm-accent-soft: rgba(111, 143, 255, 0.16);
+  --tm-green: #3ddc84;
+  --tm-green-soft: rgba(61, 220, 132, 0.16);
+  --tm-green-text: #3ddc84;
+  --tm-amber: #fbbf24;
+  --tm-amber-text: #fbbf24;
+  --tm-amber-soft: rgba(251, 191, 36, 0.15);
+  --tm-red: #ff6b6b;
+  --tm-red-soft: rgba(255, 107, 107, 0.14);
+  /* 暗色下文字用的亮色系配白字对比度不够，实心按钮单独用深一档的底色 */
+  --tm-accent-fill: #3d5fd9;
+  --tm-accent-fill-hover: #3656cc;
+  --tm-green-fill: #15803d;
+  --tm-amber-fill: #b45309;
+  --tm-red-fill: #c53030;
+  --tm-switch-off: #3a3e46;
+  --tm-track: rgba(255, 255, 255, 0.09);
+  --tm-shadow: 0 0 0 1px rgba(255, 255, 255, 0.02);
+  --tm-shadow-pop: 0 16px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --tm-glass: rgba(11, 12, 14, 0.78);
+  --tm-glass-strong: rgba(30, 33, 38, 0.92);
+  --tm-tooltip-bg: #2b2f36;
+  --tm-tooltip-fg: #f2f3f5;
+  --tm-chrome: #0b0c0e;
+
+  --bulma-body-background-color: var(--tm-bg);
+  --bulma-text: var(--tm-text-2);
+  --bulma-text-strong: var(--tm-text);
+  --bulma-link: var(--tm-accent);
+  --bulma-link-text: var(--tm-accent);
+  --bulma-link-text-active: var(--tm-accent);
+  color-scheme: dark;
+}
+
+/* ------------------------------------------------------------------ 基础 */
+
+html {
+  background-color: var(--tm-bg);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--tm-bg);
+  color: var(--tm-text-2);
+  font-family: var(--tm-font);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body,
+button,
+input,
+select,
+textarea {
+  font-family: var(--tm-font);
+}
+
+a,
+.button,
+.navbar-item,
+label {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+a {
+  color: var(--tm-accent);
+}
+
+/* 原版全站 a:hover 加下划线，按钮、导航、卡片里的链接都会冒出下划线 */
+a:hover {
+  text-decoration: none;
+}
+
+.content a:hover,
+.help a:hover,
+.notification a:hover,
+p a:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+strong,
+.title,
+.label {
+  color: var(--tm-text);
+}
+
+.title,
+.subtitle {
+  font-family: var(--tm-font-display);
+}
+
+::selection {
+  background: var(--tm-accent-soft);
+}
+
+:focus-visible {
+  outline: 2px solid var(--tm-accent);
+  outline-offset: 2px;
+}
+
+/* Bulma 的 .button:focus-visible { outline: none } 比上面那条更具体，按钮上要再写一次 */
+html .button:focus-visible,
+html [role="button"]:focus-visible {
+  outline: 2px solid var(--tm-accent);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+main.section {
+  padding: 28px 24px 40px;
+}
+
+@media screen and (max-width: 768px) {
+  main.section {
+    padding: 14px 16px 28px;
+  }
+}
+
+/* ------------------------------------------------------------------ 顶部导航 */
+
+html .navbar.is-dark {
+  --tm-nav-fg: var(--tm-text);
+  position: sticky;
+  top: 0;
+  min-height: 56px;
+  padding-top: env(safe-area-inset-top);
+  background: transparent;
+  color: var(--tm-nav-fg);
+  border-bottom: 1px solid var(--tm-line);
+  box-shadow: none;
+}
+
+/* TeslaMate 的 [data-theme=…] .navbar.is-dark 也设了下边框，要比它更具体才压得住 */
+html[data-theme] .navbar.is-dark {
+  border-bottom-color: var(--tm-line);
+}
+
+/* 毛玻璃放在伪元素上：backdrop-filter 会让 fixed 定位的子元素（手机底栏）改为相对导航栏定位 */
+html .navbar.is-dark::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--tm-glass);
+  -webkit-backdrop-filter: saturate(1.8) blur(18px);
+  backdrop-filter: saturate(1.8) blur(18px);
+}
+
+html .navbar.is-dark .navbar-brand {
+  min-height: 56px;
+}
+
+html .navbar.is-dark .navbar-brand > a.navbar-item {
+  padding: 0 12px;
+  background: transparent !important;
+}
+
+html .navbar .navbar-brand img {
+  width: 104px !important;
+  max-height: none;
+  height: auto;
+}
+
+/* logo 本身是白字，亮色主题下压成近黑色 */
+html:not([data-theme="dark"]) .navbar .navbar-brand img {
+  filter: brightness(0);
+  opacity: 0.88;
+}
+
+html .navbar.is-dark .navbar-item,
+html .navbar.is-dark .navbar-link {
+  color: var(--tm-text-2);
+  font-weight: 500;
+  font-size: 15px;
+}
+
+html .navbar .navbar-item .icon .mdi {
+  font-size: 20px;
+}
+
+@media screen and (min-width: 1024px) {
+  html .navbar .navbar-end {
+    align-items: center;
+    gap: 4px;
+  }
+
+  html .navbar.is-dark .navbar-end > .navbar-item,
+  html .navbar.is-dark .navbar-end > .navbar-item > .navbar-link {
+    height: 38px;
+    padding: 0 14px 0 10px;
+    border-radius: 999px;
+    background: transparent;
+    transition: background-color 0.15s, color 0.15s;
+  }
+
+  html .navbar.is-dark .navbar-end > .navbar-item.has-dropdown {
+    padding: 0;
+  }
+
+  /* 原版图标和文字之间有个 &nbsp;，它自己也是一个 flex 子项，gap 会在它两边各算一次，
+     所以 gap 清零，间距放到图标上 */
+  html .navbar.is-dark .navbar-end > a.navbar-item,
+  html .navbar.is-dark .navbar-end > .navbar-item > .navbar-link {
+    gap: 0;
+    font-size: 0;
+  }
+
+  html .navbar .navbar-end > .navbar-item > .icon,
+  html .navbar .navbar-end > .navbar-item > .navbar-link > .icon {
+    margin-inline-end: 6px;
+  }
+
+  html .navbar .navbar-end > .navbar-item > span:not(.icon),
+  html .navbar .navbar-end > .navbar-item > .navbar-link > span:not(.icon) {
+    font-size: 15px;
+  }
+
+  html .navbar .navbar-end > .navbar-item.mr-5 {
+    margin-right: 0 !important;
+  }
+
+  html .navbar.is-dark .navbar-end > a.navbar-item:hover,
+  html .navbar.is-dark .navbar-end > .navbar-item.has-dropdown:hover > .navbar-link {
+    background: var(--tm-surface-3);
+    color: var(--tm-text);
+  }
+
+  html .navbar.is-dark .navbar-end > a.navbar-item.tm-active {
+    background: var(--tm-accent-soft);
+    color: var(--tm-accent);
+  }
+
+  /* 桌面端 logo 本身就回首页，额外的「主页」标签只在手机底栏用 */
+  html .navbar .navbar-end > .tm-home {
+    display: none !important;
+  }
+
+  /* 19 个 Grafana 面板排成两列，一眼看全，不用滚动 */
+  html .navbar .navbar-dropdown.is-boxed {
+    top: calc(100% + 6px);
+    inset-inline-start: auto;
+    inset-inline-end: 0;
+    width: 460px;
+    columns: 2;
+    column-gap: 4px;
+    padding: 6px;
+    border: 1px solid var(--tm-line);
+    border-radius: var(--tm-r-md);
+    background: var(--tm-glass-strong);
+    -webkit-backdrop-filter: saturate(1.8) blur(20px);
+    backdrop-filter: saturate(1.8) blur(20px);
+    box-shadow: var(--tm-shadow-pop);
+  }
+
+  /* 鼠标从按钮移到下拉框时经过 6px 空隙，补一块透明区域让 :hover 不断开 */
+  /* 两列面板整体在按钮左边，鼠标斜着移向左列会先离开按钮；打开时把按钮左边这段也算进悬停区 */
+  html .navbar .navbar-item.has-dropdown.is-hoverable:hover::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    inset-inline-end: 100%;
+    width: calc(460px - 100%);
+    height: calc(100% + 8px);
+  }
+
+  html .navbar .navbar-item.has-dropdown.is-hoverable::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    height: 8px;
+  }
+}
+
+html .navbar .navbar-dropdown a.navbar-item {
+  padding: 9px 12px;
+  border-radius: var(--tm-r-sm);
+  /* Bulma 给每一行刷了不透明底色，会把毛玻璃面板盖成一块白板 */
+  background-color: transparent;
+  color: var(--tm-text);
+  font-size: 14.5px;
+  white-space: nowrap;
+  break-inside: avoid;
+}
+
+html .navbar .navbar-dropdown a.navbar-item:hover {
+  background: var(--tm-surface-3);
+  color: var(--tm-text);
+}
+
+/* ------------------------------------------------------------------ 手机 / 平板：底部标签栏 */
+
+@media screen and (max-width: 1023px) {
+  html .navbar.is-dark {
+    position: relative;
+    min-height: 52px;
+  }
+
+  html .navbar.is-dark .navbar-brand {
+    min-height: 52px;
+  }
+
+  /* logo 和下面卡片的左边对齐（main.section 左右留白：平板 24px，手机 16px） */
+  html .navbar.is-dark .navbar-brand > a.navbar-item {
+    padding: 0 12px 0 24px;
+  }
+
+  html .navbar .navbar-burger {
+    display: none;
+  }
+
+  body {
+    padding-bottom: calc(var(--tm-tabbar-h) + env(safe-area-inset-bottom));
+  }
+
+  html .navbar #navbar.navbar-menu {
+    display: block !important;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    margin: 0;
+    padding: 0 max(8px, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(8px, env(safe-area-inset-left));
+    background: transparent;
+    box-shadow: none;
+    border-top: 1px solid var(--tm-line);
+  }
+
+  html .navbar #navbar.navbar-menu::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: var(--tm-glass);
+    -webkit-backdrop-filter: saturate(1.8) blur(20px);
+    backdrop-filter: saturate(1.8) blur(20px);
+  }
+
+  html .navbar .navbar-end {
+    display: flex;
+    align-items: stretch;
+    justify-content: space-around;
+    max-width: 560px;
+    height: var(--tm-tabbar-h);
+    margin: 0 auto;
+  }
+
+  html .navbar.is-dark .navbar-end > a.navbar-item,
+  html .navbar.is-dark .navbar-end > .navbar-item.has-dropdown {
+    flex: 1 1 0;
+    min-width: 0;
+    margin: 0 !important;
+    padding: 0;
+    background: transparent !important;
+  }
+
+  /* 原版在图标和文字之间塞了一个 &nbsp;，字号归零把它压掉，再给子元素单独设字号 */
+  html .navbar.is-dark .navbar-end > a.navbar-item,
+  html .navbar.is-dark .navbar-end > .navbar-item.has-dropdown > .navbar-link {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    height: 100%;
+    padding: 6px 2px 4px;
+    font-size: 0;
+    color: var(--tm-text-hint);
+    background: transparent !important;
+    transition: color 0.15s;
+  }
+
+  html .navbar.is-dark .navbar-end > .navbar-item.has-dropdown > .navbar-link {
+    cursor: pointer;
+    user-select: none;
+  }
+
+  html .navbar .navbar-end > .navbar-item > .icon,
+  html .navbar .navbar-end > .navbar-item > .navbar-link > .icon {
+    width: 26px;
+    height: 26px;
+  }
+
+  html .navbar .navbar-end > .navbar-item .icon .mdi {
+    font-size: 23px;
+  }
+
+  html .navbar .navbar-end > .navbar-item > span:not(.icon),
+  html .navbar .navbar-end > .navbar-item > .navbar-link > span:not(.icon) {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    line-height: 1.2;
+  }
+
+  html .navbar.is-dark .navbar-end > a.navbar-item.tm-active,
+  html .navbar.is-dark .navbar-end > .navbar-item.has-dropdown.tm-open > .navbar-link {
+    color: var(--tm-accent-hover);
+  }
+
+  /* 面板打开时只让「控制台」高亮，当前页的标签先退回灰色 */
+  html.tm-sheet-open .navbar.is-dark .navbar-end > a.navbar-item.tm-active {
+    color: var(--tm-text-hint);
+  }
+
+  html .navbar.is-dark .navbar-end > a.navbar-item:active .icon,
+  html .navbar.is-dark .navbar-end > .navbar-item.has-dropdown > .navbar-link:active .icon {
+    transform: scale(0.9);
+  }
+
+  html .navbar .navbar-end .icon {
+    transition: transform 0.12s var(--tm-ease);
+  }
+
+  /* 「控制台」下拉在手机上改成从底栏上方弹出的面板（theme.js 负责开关） */
+  html .navbar .navbar-item.has-dropdown .navbar-dropdown {
+    display: none !important;
+  }
+
+  html .navbar .navbar-item.has-dropdown.tm-open .navbar-dropdown {
+    display: block !important;
+    position: fixed;
+    left: max(10px, env(safe-area-inset-left));
+    right: max(10px, env(safe-area-inset-right));
+    bottom: calc(var(--tm-tabbar-h) + env(safe-area-inset-bottom) + 10px);
+    max-width: 540px;
+    max-height: min(62vh, 520px);
+    margin: 0 auto;
+    padding: 8px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--tm-line);
+    border-radius: var(--tm-r-lg);
+    background: var(--tm-glass-strong);
+    -webkit-backdrop-filter: saturate(1.8) blur(24px);
+    backdrop-filter: saturate(1.8) blur(24px);
+    box-shadow: var(--tm-shadow-pop);
+    animation: tm-sheet-in 0.22s var(--tm-ease);
+  }
+
+  html .navbar .navbar-item.has-dropdown.tm-open .navbar-dropdown a.navbar-item {
+    display: block;
+    padding: 12px 14px;
+    font-size: 15.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  html .navbar .navbar-item.has-dropdown.tm-open .navbar-dropdown a.navbar-item + a.navbar-item {
+    border-top: 1px solid var(--tm-line);
+    border-radius: 0;
+  }
+
+  /* 面板打开时顶栏跟着一起压暗（顶栏和底栏在同一个层里，遮罩盖不到它） */
+  html.tm-sheet-open .navbar.is-dark::before {
+    box-shadow: inset 0 0 0 100vmax rgba(0, 0, 0, 0.32);
+    transition: box-shadow 0.2s ease;
+  }
+
+  html.tm-sheet-open .navbar.is-dark .navbar-brand {
+    filter: brightness(0.68);
+    transition: filter 0.2s ease;
+  }
+
+  /* 面板打开时的遮罩。z-index 比导航栏（401）低，底栏和面板仍在遮罩上面 */
+  html.tm-sheet-open body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 400;
+    background: rgba(0, 0, 0, 0.32);
+    animation: tm-fade-in 0.2s ease;
+  }
+}
+
+@media screen and (max-width: 768px) {
+  html .navbar.is-dark .navbar-brand > a.navbar-item {
+    padding-left: 16px;
+  }
+}
+
+@keyframes tm-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+}
+
+@keyframes tm-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* 页面切换时顶部的细进度条（theme.js 创建） */
+#tm-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2000;
+  width: 0;
+  height: 2px;
+  background: var(--tm-accent);
+  box-shadow: 0 0 8px var(--tm-accent);
+  opacity: 0;
+  pointer-events: none;
+  transition: width 0.4s var(--tm-ease), opacity 0.3s;
+}
+
+#tm-progress.is-active {
+  width: 72%;
+  opacity: 1;
+  transition: width 6s cubic-bezier(0.1, 0.6, 0.2, 1), opacity 0.1s;
+}
+
+#tm-progress.is-done {
+  width: 100%;
+  opacity: 0;
+  transition: width 0.2s ease, opacity 0.35s 0.15s;
+}
+
+/* ------------------------------------------------------------------ 页脚 */
+
+footer.footer {
+  height: auto;
+  min-height: 0;
+  padding: 4px 16px 24px;
+  background: transparent;
+  opacity: 1;
+}
+
+footer.footer .button.is-text {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--tm-accent-soft);
+  color: var(--tm-accent) !important;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+/* ------------------------------------------------------------------ 通用组件 */
+
+.box,
+.card {
+  background: var(--tm-surface);
+  color: var(--tm-text-2);
+  border: 1px solid var(--tm-line) !important;
+  border-radius: var(--tm-r-lg);
+  box-shadow: var(--tm-shadow);
+}
+
+.box {
+  padding: 22px;
+}
+
+/* 按钮 */
+.button {
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: var(--tm-surface-2);
+  color: var(--tm-text);
+  font-weight: 600;
+  font-size: 15px;
+  box-shadow: none;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, transform 0.1s, filter 0.15s;
+}
+
+.button:hover {
+  background: var(--tm-surface-3);
+  color: var(--tm-text);
+  border-color: transparent;
+}
+
+.button:active:not([disabled]) {
+  transform: scale(0.98);
+}
+
+.button.is-small {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 13.5px;
+}
+
+.button.is-rounded {
+  border-radius: 999px;
+}
+
+/* 加载中的按钮 Bulma 会把字色设成透明，转圈用的是 --bulma-loading-color */
+.button {
+  --bulma-loading-color: var(--tm-text);
+}
+
+.button.is-info,
+.button.is-link,
+.button.is-primary {
+  --bulma-loading-color: var(--tm-on-fill);
+  background: var(--tm-accent-fill);
+  border-color: transparent;
+  color: var(--tm-on-fill);
+}
+
+.button.is-info:hover,
+.button.is-link:hover,
+.button.is-primary:hover {
+  background: var(--tm-accent-fill-hover);
+  color: var(--tm-on-fill);
+}
+
+.button.is-success {
+  --bulma-loading-color: var(--tm-on-fill);
+  background: var(--tm-green-fill);
+  color: var(--tm-on-fill);
+}
+
+.button.is-danger {
+  --bulma-loading-color: var(--tm-on-fill);
+  background: var(--tm-red-fill);
+  color: var(--tm-on-fill);
+}
+
+.button.is-warning {
+  --bulma-loading-color: var(--tm-on-fill);
+  background: var(--tm-amber-fill);
+  color: var(--tm-on-fill);
+}
+
+/* 浅色款（导入页的放弃按钮等）不要被上面刷成实心 */
+.button.is-danger.is-light {
+  background: var(--tm-red-soft);
+  color: var(--tm-red);
+}
+
+.button.is-info.is-light,
+.button.is-link.is-light {
+  background: var(--tm-accent-soft);
+  color: var(--tm-accent);
+}
+
+.button[disabled],
+fieldset[disabled] .button {
+  opacity: 0.45;
+  box-shadow: none;
+}
+
+.button.is-info[disabled],
+.button.is-link[disabled] {
+  background: var(--tm-accent-fill);
+  color: var(--tm-on-fill);
+}
+
+.button.is-text {
+  background: transparent;
+  color: var(--tm-text-2);
+  text-decoration: none;
+}
+
+.button.is-text:hover {
+  background: var(--tm-surface-3);
+  color: var(--tm-text);
+}
+
+
+/* 表单控件 */
+.label {
+  color: var(--tm-text);
+  font-weight: 600;
+  font-size: 14.5px;
+}
+
+.input,
+.textarea,
+.select select {
+  height: 42px;
+  border: 1px solid var(--tm-line-strong);
+  border-radius: 12px;
+  background-color: var(--tm-surface);
+  color: var(--tm-text);
+  /* 不能小于 16px：iOS Safari 遇到更小的输入框，一点就自动放大页面 */
+  font-size: 16px;
+  box-shadow: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.textarea {
+  height: auto;
+}
+
+.input.is-rounded {
+  border-radius: 12px;
+  padding-left: 1em;
+}
+
+.control.has-icons-left .input.is-rounded {
+  padding-left: 2.6em;
+}
+
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--tm-text-hint);
+}
+
+.input:hover,
+.select select:hover {
+  border-color: var(--tm-text-3);
+}
+
+.input:focus,
+.input:focus-visible,
+.textarea:focus,
+.select select:focus,
+.select select:focus-visible {
+  border-color: var(--tm-accent);
+  box-shadow: 0 0 0 3px var(--tm-accent-soft);
+  outline: none;
+}
+
+.input[disabled],
+.select select[disabled] {
+  background-color: var(--tm-surface-2);
+  border-color: var(--tm-line);
+  color: var(--tm-text-3);
+}
+
+.select select {
+  padding-right: 2.4em;
+}
+
+.select:not(.is-multiple):not(.is-loading)::after {
+  border-color: var(--tm-text-hint);
+  border-width: 2px;
+  width: 0.5em;
+  height: 0.5em;
+  margin-top: -0.35em;
+  right: 1em;
+}
+
+.select.is-fullwidth select {
+  width: 100%;
+}
+
+.control.has-icons-left .icon {
+  height: 42px;
+  color: var(--tm-text-3) !important;
+}
+
+.help {
+  font-size: 13px;
+}
+
+.help.is-danger:empty {
+  display: none;
+}
+
+.input.is-danger,
+.select.is-danger select {
+  border-color: var(--tm-red);
+}
+
+.help.is-danger {
+  color: var(--tm-red);
+}
+
+input[type="checkbox"]:not(.switch),
+input[type="radio"] {
+  accent-color: var(--tm-accent);
+  width: 18px;
+  height: 18px;
+  vertical-align: -3px;
+}
+
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--tm-text);
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.checkbox:hover {
+  color: var(--tm-text);
+}
+
+/* 开关：iOS 风格 */
+.switch[type="checkbox"] + label {
+  min-width: 51px;
+  height: 31px;
+  padding: 0 0 0 51px;
+  font-size: 0;
+}
+
+.switch[type="checkbox"] + label::before {
+  top: 0;
+  width: 51px;
+  height: 31px;
+  border: 0;
+  border-radius: 999px !important;
+  background: var(--tm-switch-off);
+  transition: background-color 0.2s ease;
+}
+
+.switch[type="checkbox"] + label::after {
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 50% !important;
+  background: #fff;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.18), 0 0 1px rgba(0, 0, 0, 0.18);
+  transition: left 0.24s var(--tm-ease);
+}
+
+.switch[type="checkbox"]:checked + label::after {
+  left: 22px;
+}
+
+.switch[type="checkbox"].is-success:checked + label::before,
+.switch[type="checkbox"]:checked + label::before {
+  background: var(--tm-green);
+}
+
+.switch[type="checkbox"]:focus + label::before,
+.switch[type="checkbox"]:focus + label::after {
+  outline: none;
+}
+
+/* 关着的开关在白卡片上几乎看不见，加一圈描边 */
+.switch[type="checkbox"]:not(:checked) + label::before {
+  box-shadow: inset 0 0 0 1.5px var(--tm-text-3);
+}
+
+.switch[type="checkbox"]:focus-visible + label::before {
+  outline: 2px solid var(--tm-accent);
+  outline-offset: 2px;
+}
+
+/* 标签 */
+.tag:not(body) {
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 999px;
+  background: var(--tm-surface-2);
+  color: var(--tm-text);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.tags.has-addons .tag:first-child:not(:last-child) {
+  padding: 0 4px 0 10px;
+  border-radius: 999px 0 0 999px;
+}
+
+.tags.has-addons .tag:last-child:not(:first-child) {
+  padding-left: 6px;
+  border-radius: 0 999px 999px 0;
+}
+
+.tag.is-light.is-primary,
+.tag.is-light.is-info {
+  color: var(--tm-accent);
+}
+
+.tag.is-light.is-warning {
+  color: var(--tm-amber-text);
+}
+
+/* 没有颜色类的（充电时长）用中性灰，别成了一排里最重的图标 */
+.tag.is-light:not(.is-primary):not(.is-info):not(.is-warning):not(.is-danger):not(.is-success) {
+  color: var(--tm-text-2);
+}
+
+.tag.is-light.is-danger {
+  color: var(--tm-red);
+}
+
+.tag .icon .mdi {
+  font-size: 16px;
+}
+
+/* 通知条 */
+.notification {
+  padding: 14px 16px;
+  border-radius: var(--tm-r-md);
+  background: var(--tm-surface);
+  color: var(--tm-text);
+  border: 1px solid var(--tm-line);
+  box-shadow: var(--tm-shadow);
+}
+
+.notification.is-warning {
+  background: var(--tm-amber-soft);
+  border-color: transparent;
+  color: var(--tm-text);
+  box-shadow: none;
+}
+
+.notification.is-danger {
+  background: var(--tm-red-soft);
+  border-color: transparent;
+  color: var(--tm-red);
+  box-shadow: none;
+}
+
+.notification.is-info {
+  background: var(--tm-accent-soft);
+  border-color: transparent;
+  color: var(--tm-text);
+  box-shadow: none;
+}
+
+.notification.is-success {
+  background: var(--tm-green-soft);
+  border-color: transparent;
+  color: var(--tm-text);
+  box-shadow: none;
+}
+
+.notification .title,
+.notification .subtitle {
+  color: inherit;
+}
+
+/* 表格 */
+.table {
+  background: transparent;
+  color: var(--tm-text);
+}
+
+.table td,
+.table th {
+  border-color: var(--tm-line);
+}
+
+.table th {
+  color: var(--tm-text-2);
+  font-weight: 500;
+}
+
+/* 分隔线（设置页的「通用设置」） */
+.divider {
+  margin: 30px 0 18px;
+  color: var(--tm-text-hint);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.divider::before,
+.divider::after {
+  background-color: var(--tm-line-strong);
+}
+
+/* 只有一辆车时原版把「通用设置」分隔线设成不可见但仍占位，这里直接收起 */
+.divider.is-invisible {
+  height: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+/* 标签页（多辆车时的切换）→ 分段控件 */
+.tabs.is-boxed ul {
+  display: inline-flex;
+  flex-grow: 0;
+  margin: 0 auto;
+  padding: 3px;
+  gap: 2px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--tm-surface-3);
+}
+
+.tabs.is-boxed li a {
+  padding: 6px 16px;
+  border: 0 !important;
+  border-radius: 9px !important;
+  color: var(--tm-text-2);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.tabs.is-boxed li a:hover {
+  background: transparent;
+  color: var(--tm-text);
+}
+
+.tabs.is-boxed li.is-active a {
+  background: var(--tm-surface) !important;
+  color: var(--tm-text) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.tabs {
+  margin-bottom: 18px !important;
+}
+
+/* 悬浮提示 */
+[data-tooltip]:not(.is-loading):not(.is-disabled):not([disabled])::before {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--tm-tooltip-bg);
+  color: var(--tm-tooltip-fg);
+  font-family: var(--tm-font);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+}
+
+/* 弹窗 */
+.modal-background {
+  background: rgba(0, 0, 0, 0.42);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+
+.modal-card {
+  border-radius: var(--tm-r-xl);
+  box-shadow: var(--tm-shadow-pop);
+}
+
+.modal-card-head,
+.modal-card-body,
+.modal-card-foot {
+  background: var(--tm-surface);
+  border: 0;
+  color: var(--tm-text-2);
+}
+
+.modal-card-head {
+  padding: 18px 20px 6px;
+  border-radius: var(--tm-r-xl) var(--tm-r-xl) 0 0;
+}
+
+.modal-card-title {
+  color: var(--tm-text);
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.modal-card-body {
+  padding: 8px 20px 12px;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.modal-card-foot {
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 10px 20px 20px;
+  border-radius: 0 0 var(--tm-r-xl) var(--tm-r-xl);
+}
+
+/* ------------------------------------------------------------------ 页面标题（面包屑） */
+
+.breadcrumb {
+  margin-bottom: 20px !important;
+  font-size: 14px;
+}
+
+.breadcrumb ul {
+  flex-wrap: wrap;
+  align-items: baseline;
+  row-gap: 2px;
+}
+
+/* 上级页面做成 iOS 那种蓝色返回链接 */
+.breadcrumb li a {
+  padding: 0 !important;
+  color: var(--tm-accent);
+  font-weight: 500;
+}
+
+.breadcrumb li a:hover {
+  color: var(--tm-accent-hover);
+}
+
+/* 只有一级上级（设置 / 收藏点 / 充电费用）时，前面加个 ‹ */
+.breadcrumb li:first-child:nth-last-child(2) a::before {
+  content: "\2039";
+  margin-right: 4px;
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.breadcrumb li + li::before {
+  content: "\203A";
+  padding: 0 7px;
+  color: var(--tm-text-3);
+}
+
+/* 当前页那一节单独占一行，当作大标题 */
+.breadcrumb li.is-active {
+  order: 9;
+  flex-basis: 100%;
+  min-width: 0;
+  margin-top: 2px;
+}
+
+.breadcrumb li.is-active::before {
+  display: none;
+}
+
+.breadcrumb li.is-active a {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--tm-text) !important;
+  font-family: var(--tm-font-display);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  pointer-events: none;
+}
+
+@media screen and (max-width: 768px) {
+  .breadcrumb li.is-active a {
+    font-size: 28px;
+  }
+}
+
+/* 新建收藏点还没起名时 TeslaMate 显示「…」，当大标题像个「更多」按钮，换成「新建收藏点」（theme.js） */
+html.tm-untitled .breadcrumb li.is-active a {
+  font-size: 0 !important;
+}
+
+html.tm-untitled .breadcrumb li.is-active a::after {
+  content: var(--tm-untitled-label, "New");
+  font-size: 30px;
+}
+
+@media screen and (max-width: 768px) {
+  html.tm-untitled .breadcrumb li.is-active a::after {
+    font-size: 28px;
+  }
+}
+
+/* ------------------------------------------------------------------ 首页：车辆卡片 */
+
+.car.card {
+  margin-bottom: 20px;
+  border-radius: var(--tm-r-xl);
+  /* 原版故意让卡片 overflow: visible（图标的提示框要能伸出卡片），圆角裁剪只做在地图上 */
+}
+
+.car .card-image {
+  overflow: hidden;
+  border-radius: var(--tm-r-xl) var(--tm-r-xl) 0 0;
+  background: var(--tm-surface-2);
+}
+
+/* 把 Leaflet 内部的 z-index（控件是 1000）关在地图里，免得盖到吸顶的导航栏上 */
+.leaflet-container {
+  isolation: isolate;
+  font-family: var(--tm-font);
+}
+
+@media screen and (max-width: 768px) {
+  .car .map {
+    height: 208px !important;
+  }
+
+  /* 地图底部淡出到卡片底色。画在 Leaflet 里面：在地图图层（400）之上、控件（1000）之下，
+     不会盖住地图版权信息 */
+  .car .card-image figure:not(.is-map-fullscreen) .map::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 900;
+    height: 36px;
+    background: linear-gradient(to bottom, transparent, var(--tm-surface));
+    pointer-events: none;
+  }
+}
+
+@media screen and (min-width: 769px) {
+  .car .card-image {
+    /* 用 flex-basis：原版给内容区 width:100%，只写 width 的话地图总被挤到 300px */
+    flex: 0 0 46%;
+    min-width: 300px;
+    border-radius: var(--tm-r-xl) 0 0 var(--tm-r-xl);
+  }
+
+  .car .card-content {
+    flex: 1 1 auto;
+    max-width: none;
+  }
+}
+
+.car .card-content {
+  padding: 14px 16px 18px;
+}
+
+@media screen and (min-width: 769px) {
+  .car .card-content {
+    padding: 22px 24px 24px;
+  }
+}
+
+/* 车名 + 状态图标 */
+.car .card-content .media {
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px 12px;
+  margin-bottom: 16px !important;
+  padding: 0;
+}
+
+.car .media-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: visible;
+}
+
+.car .media .title.is-5 {
+  margin-bottom: 4px;
+  color: var(--tm-text);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.car .media .subtitle.is-6 {
+  margin-top: 0 !important;
+  color: var(--tm-text-2);
+  font-size: 14.5px;
+  font-weight: 500 !important;
+}
+
+.car .card-content .icons {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  /* 放得下时 .media-content 会把它挤到右边；换行到下一行时左对齐，和车名对齐 */
+  justify-content: flex-start;
+  gap: 6px;
+  margin: 2px 0 0 !important;
+}
+
+.car .card-content .icons > .icon,
+.car .card-content .icons > .spinner:not(.is-hidden) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--tm-surface-2);
+  color: var(--tm-text-2) !important;
+  text-decoration: none !important;
+  transition: background-color 0.15s;
+}
+
+.car .card-content .icons > a.icon:hover {
+  background: var(--tm-surface-3);
+}
+
+.car .card-content .icons .mdi {
+  font-size: 17px;
+}
+
+.car .card-content .icons > .icon.has-text-link {
+  background: var(--tm-accent-soft);
+  color: var(--tm-accent) !important;
+}
+
+.car .card-content .icons > .icon.has-text-danger {
+  background: var(--tm-red-soft);
+  color: var(--tm-red) !important;
+}
+
+/* 需要留意的：没锁车、车门 / 车窗开着、胎压低 */
+.car .card-content .icons > .icon:has(> .mdi-lock-open-variant, > .mdi-car-door, > .mdi-window-open, > .mdi-car-tire-alert) {
+  background: var(--tm-amber-soft);
+  color: var(--tm-amber-text) !important;
+}
+
+/* 充电时插头亮绿 */
+[data-tm-state="charging"] .car .card-content .icons > .icon:has(> .mdi-power-plug) {
+  background: var(--tm-green-soft);
+  color: var(--tm-green-text) !important;
+}
+
+/* 「正在获取车辆数据」的转圈：TeslaMate 每次轮询都会显示一下。放在图标行里会把整行挤得换行、
+   卡片上下跳，挪到地图左上角当一个浮标 */
+.car .card-content .icons > .spinner:not(.is-hidden) {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 5;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--tm-line);
+  border-radius: 12px;
+  background: var(--tm-glass-strong);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+}
+
+/* 数据表 → 两列（宽屏三列）的数据块 */
+.car .content {
+  margin: 0;
+}
+
+.car .content table.table {
+  display: block;
+  margin: 0;
+}
+
+.car .content table.table thead {
+  display: none;
+}
+
+.car .content table.table tbody {
+  display: grid;
+  /* 两列，桌面三列 */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.car .content table.table tr {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 4px;
+  min-width: 0;
+  padding: 11px 13px 12px;
+  border-radius: var(--tm-r-md);
+  background: var(--tm-surface-2);
+}
+
+.car .content table.table td {
+  display: block;
+  padding: 0 !important;
+  border: 0;
+  background: none;
+}
+
+.car .content table.table td:first-child {
+  color: var(--tm-text-2);
+  font-size: 12.5px;
+  font-weight: 500 !important;
+  line-height: 1.3;
+  /* 中文标签按空格断行（「当前剩余里程 / (预估)」），实在放不下再硬断 */
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.car .content table.table td:last-child {
+  color: var(--tm-text);
+  font-family: var(--tm-font-display);
+  font-size: 17px;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  /* 「2026/09/24, 01:05:52」这种两行的值断得均匀些，不剩一个 AM 单独一行 */
+  text-wrap: balance;
+}
+
+@media screen and (min-width: 1024px) {
+  .car .content table.table tbody {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  /* 三列时同理（见下面两列的说明）：子元素数 = 数据块数 + 2。
+     最后一行剩两块 → 最后一块占两格；只剩一块 → 占满一行 */
+  .car .content table.table tbody:has(> tr > td > .has-tooltip-right-desktop) > tr:last-child:nth-child(3n+1):not(:has(> td > .has-tooltip-right-desktop)) {
+    grid-column: span 2;
+  }
+
+  .car .content table.table tbody:has(> tr > td > .has-tooltip-right-desktop) > tr:last-child:nth-child(3n) {
+    grid-column: 1 / -1;
+  }
+}
+
+@media screen and (max-width: 359px) {
+  .car .content table.table tbody {
+    gap: 6px;
+  }
+
+  .car .content table.table tr {
+    padding: 10px 11px 11px;
+  }
+
+  .car .content table.table td:last-child {
+    font-size: 15.5px;
+  }
+}
+
+/* 两列时数据块是单数，最后一块占满一行，不留空洞。状态和电量那两行总是整行，
+   所以「单数个数据块」等价于 tbody 的子元素总数是单数 */
+@media screen and (max-width: 1023px) {
+  .car .content table.table tbody:has(> tr > td > .has-tooltip-right-desktop) > tr:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+}
+
+.car .content table.table td:last-child a {
+  color: var(--tm-accent);
+}
+
+/* 第一行「当前状态」：做成顶部的状态胶囊，圆点颜色随状态（theme.js 判断） */
+.car .content table.table tbody > tr:first-child {
+  order: -2;
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: center;
+  padding: 0 0 2px;
+  background: transparent;
+}
+
+.car .content table.table tbody > tr:first-child > td:first-child {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.car .content table.table tbody > tr:first-child > td:last-child {
+  display: inline-flex;
+  align-items: center;
+  /* 不用 gap：「2 h, 15 min」的后半段在单独的 span 里，gap 会把它隔开 */
+  gap: 0;
+  /* 要压过上面 td 的 padding: 0 !important */
+  padding: 7px 14px 7px 12px !important;
+  border-radius: 999px;
+  background: var(--tm-surface-2);
+  color: var(--tm-text);
+  font-family: var(--tm-font);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.car .content table.table tbody > tr:first-child > td:last-child::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 9px;
+  background: var(--tm-state-color, var(--tm-text-3));
+  box-shadow: 0 0 0 3px var(--tm-state-soft, var(--tm-track));
+}
+
+/* 行驶 / 充电时整个胶囊带上状态色 */
+[data-tm-state="driving"] .car .content table.table tbody > tr:first-child > td:last-child,
+[data-tm-state="charging"] .car .content table.table tbody > tr:first-child > td:last-child {
+  background: var(--tm-state-soft);
+}
+
+[data-tm-state="charging"] {
+  --tm-state-color: var(--tm-green);
+  --tm-state-soft: var(--tm-green-soft);
+  --tm-soc-color: var(--tm-green);
+}
+
+[data-tm-state="driving"] {
+  --tm-state-color: var(--tm-accent);
+  --tm-state-soft: var(--tm-accent-soft);
+}
+
+[data-tm-state="online"] {
+  --tm-state-color: var(--tm-accent);
+  --tm-state-soft: var(--tm-accent-soft);
+}
+
+[data-tm-state="suspended"],
+[data-tm-state="updating"] {
+  --tm-state-color: var(--tm-amber);
+  --tm-state-soft: var(--tm-amber-soft);
+}
+
+[data-tm-state="charging"] .car .content table.table tbody > tr:first-child > td:last-child::before,
+[data-tm-state="driving"] .car .content table.table tbody > tr:first-child > td:last-child::before {
+  animation: tm-pulse 2s ease-in-out infinite;
+}
+
+@keyframes tm-pulse {
+  50% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+/* 「当前电量」：大号数字 + 电量条（theme.js 从文字里读出百分比写到 --tm-soc / --tm-limit） */
+.car .content table.table tbody > tr:has(> td > .has-tooltip-right-desktop) {
+  order: -1;
+  grid-column: 1 / -1;
+  gap: 2px;
+  padding: 14px 13px 16px;
+}
+
+.car .content table.table tbody > tr:has(> td > .has-tooltip-right-desktop) > td:last-child {
+  font-size: 38px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+/* 原来藏在悬浮提示里的「100% 时续航约 xxx km」直接显示在数字下面。
+   用 ::after（排在文字后面），读屏软件读出来的顺序和看到的一致；原版的提示框（::before）关掉 */
+.car .content td > .has-tooltip-right-desktop {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  border-bottom: 0 !important;
+  cursor: default;
+}
+
+.car .content td > .has-tooltip-right-desktop[data-tooltip]::before {
+  display: none !important;
+}
+
+.car .content td > .has-tooltip-right-desktop[data-tooltip]:not([data-tooltip=""])::after {
+  content: attr(data-tooltip);
+  position: static !important;
+  display: block;
+  opacity: 1 !important;
+  visibility: visible !important;
+  color: var(--tm-text-2);
+  font: 500 13px/1.3 var(--tm-font);
+  letter-spacing: 0;
+  white-space: normal;
+}
+
+.tm-js .car .content table.table tbody > tr:has(> td > .has-tooltip-right-desktop)::after {
+  --tm-soc-p: calc(var(--tm-soc, 0) * 1%);
+  --tm-limit-p: calc(var(--tm-limit, -10) * 1%);
+  content: "";
+  display: block;
+  height: 10px;
+  margin-top: 12px;
+  border-radius: 999px;
+  background:
+    /* 充电上限刻度 */
+    linear-gradient(
+      to right,
+      transparent calc(var(--tm-limit-p) - 1px),
+      var(--tm-text-hint) calc(var(--tm-limit-p) - 1px) calc(var(--tm-limit-p) + 1px),
+      transparent calc(var(--tm-limit-p) + 1px)
+    ),
+    /* 当前电量 / 离上限还差的部分 / 空槽 */
+    linear-gradient(
+      to right,
+      var(--tm-soc-color, var(--tm-text)) var(--tm-soc-p),
+      var(--tm-soc-gap, var(--tm-track)) var(--tm-soc-p) var(--tm-limit-p),
+      var(--tm-track) var(--tm-limit-p)
+    );
+  transition: background 0.4s;
+}
+
+[data-tm-state="charging"] {
+  --tm-soc-gap: var(--tm-green-soft);
+}
+
+[data-tm-soc-level="low"] {
+  --tm-soc-color: var(--tm-red);
+}
+
+[data-tm-soc-level="mid"]:not([data-tm-state="charging"]) {
+  --tm-soc-color: var(--tm-amber);
+}
+
+/* 底部按钮（尝试休眠 / 取消休眠 / 报错） */
+.car .content > .button.is-fullwidth {
+  height: 44px;
+  margin-top: 14px;
+  border: 0;
+  border-radius: var(--tm-r-md);
+  background: var(--tm-surface-2);
+  color: var(--tm-text);
+  font-size: 14.5px;
+}
+
+.car .content > .button.is-fullwidth:hover {
+  background: var(--tm-surface-3);
+}
+
+.car .content > .button.is-fullwidth:not(.is-danger) {
+  color: var(--tm-accent);
+}
+
+.car .content > .button.is-danger {
+  background: var(--tm-red-soft);
+  color: var(--tm-red);
+  opacity: 1;
+}
+
+.car .content > .button.is-loading::after {
+  border-color: transparent transparent var(--tm-text-2) var(--tm-text-2) !important;
+}
+
+/* 没有车辆时的提示框 */
+#no-vehicles {
+  padding: 32px 24px;
+}
+
+#no-vehicles .title {
+  font-size: 19px;
+}
+
+/* ------------------------------------------------------------------ 地图 */
+
+/* 亮色下把 OSM 的配色压淡一点，信息少一些、看着干净 */
+html:not([data-theme="dark"]) .leaflet-layer {
+  filter: saturate(0.55) contrast(0.96) brightness(1.03);
+}
+
+/* 车辆方向箭头：保持原版 3px 描边的大小，换成主题色，再加一圈白色光晕和阴影，在浅色和深色瓦片上都醒目。
+   不能用 CSS transform：TeslaMate 用 SVG 的 transform 属性定位和旋转它 */
+.car .leaflet-overlay-pane path.leaflet-interactive {
+  fill: var(--tm-accent);
+  stroke: var(--tm-accent);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.car .leaflet-overlay-pane svg {
+  filter: drop-shadow(0 0 0.75px #fff) drop-shadow(0 0 0.75px #fff) drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.35));
+}
+
+/* 原版暗色主题给缩放按钮和版权信息加了反色滤镜，这里自己配色，先去掉 */
+html .leaflet-control-zoom-in,
+html .leaflet-control-zoom-out,
+html .leaflet-control-attribution {
+  filter: none !important;
+}
+
+/* 缩放按钮：圆角浮动按钮。只针对缩放控件，别碰 geoman 的绘制工具栏和搜索框 */
+.leaflet-control-zoom.leaflet-bar,
+.leaflet-touch .leaflet-control-zoom.leaflet-bar {
+  overflow: hidden;
+  border: 1px solid var(--tm-line) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12) !important;
+}
+
+.leaflet-control-zoom a,
+.leaflet-touch .leaflet-control-zoom a {
+  width: 34px;
+  height: 34px;
+  line-height: 34px;
+  border-bottom-color: var(--tm-line) !important;
+  border-radius: 0 !important;
+  background: var(--tm-glass-strong);
+  color: var(--tm-text) !important;
+  font-weight: 500;
+}
+
+.leaflet-control-zoom a:hover {
+  background: var(--tm-surface-3);
+}
+
+.leaflet-touch .leaflet-control-zoom a.leaflet-disabled,
+.leaflet-control-zoom a.leaflet-disabled {
+  background: var(--tm-glass-strong);
+  color: var(--tm-text-3) !important;
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* geoman 绘制 / 编辑工具栏（收藏点编辑页）。「完成」这类动作按钮是伸到工具栏外面的，不能 overflow: hidden */
+.leaflet-pm-toolbar.leaflet-bar,
+.leaflet-touch .leaflet-pm-toolbar.leaflet-bar {
+  overflow: visible;
+  border: 1px solid var(--tm-line) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12) !important;
+}
+
+/* 尺寸要压过 Leaflet 的 .leaflet-touch .leaflet-bar a（30px）；颜色单独写在低一档的选择器上，
+   让下面的悬停、选中状态（.active）还能盖过它 */
+.leaflet-pm-toolbar a.leaflet-buttons-control-button,
+.leaflet-touch .leaflet-pm-toolbar a.leaflet-buttons-control-button {
+  width: 34px;
+  height: 34px;
+}
+
+.leaflet-pm-toolbar .leaflet-buttons-control-button {
+  background-color: var(--tm-glass-strong) !important;
+  border-bottom-color: var(--tm-line) !important;
+}
+
+.leaflet-pm-toolbar .leaflet-buttons-control-button:hover,
+.leaflet-pm-toolbar .leaflet-buttons-control-button:focus-visible {
+  background-color: var(--tm-surface-3) !important;
+}
+
+.leaflet-pm-toolbar .button-container:first-child > a.leaflet-buttons-control-button {
+  border-radius: 11px 11px 0 0 !important;
+}
+
+.leaflet-pm-toolbar .button-container:last-child > a.leaflet-buttons-control-button {
+  border-radius: 0 0 11px 11px !important;
+}
+
+.leaflet-pm-toolbar .button-container:only-child > a.leaflet-buttons-control-button {
+  border-radius: 11px !important;
+}
+
+/* 图标是写死 #5b5b5b 的 SVG 背景图，按主题重新着色 */
+.leaflet-pm-toolbar .leaflet-buttons-control-button .control-icon {
+  filter: brightness(0) invert(0.07);
+}
+
+html[data-theme="dark"] .leaflet-pm-toolbar .leaflet-buttons-control-button .control-icon {
+  filter: brightness(0) invert(0.95);
+}
+
+.leaflet-pm-toolbar .active > .leaflet-buttons-control-button {
+  background-color: var(--tm-surface-3) !important;
+  box-shadow: inset 0 0 0 1px var(--tm-line);
+}
+
+.leaflet-pm-toolbar .leaflet-pm-actions-container .leaflet-pm-action {
+  height: 34px;
+  line-height: 34px;
+  padding: 0 14px;
+  border: 0 !important;
+  background: var(--tm-accent-fill) !important;
+  color: var(--tm-on-fill) !important;
+  font: 600 13.5px/34px var(--tm-font);
+}
+
+.leaflet-pm-toolbar .leaflet-pm-actions-container .leaflet-pm-action:hover,
+.leaflet-pm-toolbar .leaflet-pm-actions-container .leaflet-pm-action:focus-visible {
+  background: var(--tm-accent-fill-hover) !important;
+}
+
+/* 图层切换、地址搜索：同样的浮动按钮 */
+.leaflet-control-layers,
+.leaflet-touch .leaflet-control-layers {
+  border: 1px solid var(--tm-line) !important;
+  border-radius: 12px;
+  background: var(--tm-glass-strong);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12) !important;
+  color: var(--tm-text);
+}
+
+.leaflet-control-layers-expanded {
+  padding: 8px 12px;
+  color: var(--tm-text);
+}
+
+/* 图层切换：换成 MDI 的图层图标，和其它按钮一样跟随主题文字色（原图是张浅灰 PNG，暗色下看不见） */
+.leaflet-control-layers-toggle,
+.leaflet-touch .leaflet-control-layers-toggle,
+.leaflet-retina .leaflet-control-layers-toggle {
+  width: 34px;
+  height: 34px;
+  background-image: none;
+  text-align: center;
+  text-decoration: none;
+}
+
+.leaflet-control-layers-toggle::before {
+  content: "\F0328";
+  color: var(--tm-text);
+  font: normal normal normal 20px/34px "Material Design Icons";
+}
+
+.leaflet-control-geocoder,
+.leaflet-touch .leaflet-control-geocoder {
+  min-width: 34px;
+  min-height: 34px;
+  border: 1px solid var(--tm-line) !important;
+  border-radius: 12px !important;
+  background: var(--tm-glass-strong);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12) !important;
+  color: var(--tm-text);
+}
+
+.leaflet-control-geocoder-icon,
+.leaflet-touch .leaflet-control-geocoder-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background-color: transparent;
+  vertical-align: top;
+}
+
+html[data-theme="dark"] .leaflet-control-geocoder-icon {
+  filter: invert(1);
+}
+
+.leaflet-control-geocoder-form input {
+  color: var(--tm-text);
+  font-family: var(--tm-font);
+  font-size: 16px;
+}
+
+.leaflet-control-geocoder-alternatives li a {
+  color: var(--tm-text) !important;
+}
+
+.leaflet-control-geocoder-alternatives li:hover,
+.leaflet-control-geocoder-alternatives .leaflet-control-geocoder-selected {
+  background-color: var(--tm-surface-3);
+}
+
+.leaflet-control-geocoder-address-context {
+  color: var(--tm-text-2);
+}
+
+.leaflet-control-geocoder-error {
+  color: var(--tm-text-hint);
+}
+
+.leaflet-control-geocoder-alternatives li {
+  border-bottom-color: var(--tm-line);
+}
+
+.leaflet-control-attribution {
+  background: var(--tm-glass) !important;
+  color: var(--tm-text-2) !important;
+  font-size: 11px;
+}
+
+/* 离开地图的圆角，不然被切掉一块 */
+.leaflet-right .leaflet-control-attribution.leaflet-control {
+  margin: 0 10px 8px 0;
+  padding: 1px 6px;
+  border-radius: 6px;
+}
+
+.leaflet-control-attribution a {
+  color: var(--tm-text) !important;
+}
+
+.car .card-image .map-fullscreen-button {
+  /* 原版是 1000，处在最外层的叠放层级里，会浮到吸顶导航、底栏和弹出面板的遮罩上面 */
+  z-index: 3;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--tm-line) !important;
+  border-radius: 12px;
+  background: var(--tm-glass-strong) !important;
+  color: var(--tm-text) !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12) !important;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+.car .card-image .map-fullscreen-button .mdi {
+  font-size: 19px;
+}
+
+.car .card-image .is-map-fullscreen .map-fullscreen-button {
+  top: calc(env(safe-area-inset-top) + 12px);
+  right: calc(env(safe-area-inset-right) + 12px);
+}
+
+
+/* ------------------------------------------------------------------ 设置页 */
+
+/* 设置页的规则都挂在「含 #global_settings 的 LiveView 容器」下：除了两个表单，
+   新版 TeslaMate 还在表单外面加了「车辆排序」「车辆」等小节，也要一起覆盖到 */
+
+/* 整体收窄居中，桌面上不会一行拉得老长 */
+[data-phx-main]:has(> #global_settings) > * {
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+[data-phx-main]:has(> #global_settings) .columns:has(> .column > h2.title) {
+  margin: 0 0 22px !important;
+}
+
+/* 每一节：标题在卡片上方（iOS 设置那种分组列表），卡片本身画在 ::before 上 */
+[data-phx-main]:has(> #global_settings) .column:has(> h2.title) {
+  --tm-sec-h: 30px;
+  position: relative;
+  isolation: isolate;
+  padding: 0 18px 6px;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+
+[data-phx-main]:has(> #global_settings) .column:has(> h2.title)::before {
+  content: "";
+  position: absolute;
+  inset: var(--tm-sec-h) 0 0;
+  z-index: -1;
+  border: 1px solid var(--tm-line);
+  border-radius: var(--tm-r-lg);
+  background: var(--tm-surface);
+  box-shadow: var(--tm-shadow);
+}
+
+[data-phx-main]:has(> #global_settings) .column > h2.title.is-4 {
+  display: flex;
+  align-items: flex-end;
+  height: var(--tm-sec-h);
+  /* 左边和下面的设置项名字对齐；下边 6px 落在卡片里，让每一行上下留白相等 */
+  margin: 0 0 6px !important;
+  padding: 0 0 8px;
+  color: var(--tm-text-2);
+  font-family: var(--tm-font);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+/* 中文界面不转大写，否则 Theme / URLs / Tesla 会变成 THEME / URLS / TESLA，比旁边的中文标题还显眼 */
+:lang(zh) [data-phx-main]:has(> #global_settings) .column > h2.title.is-4 {
+  text-transform: none;
+}
+
+/* 每个设置项：左边名字，右边控件，行与行之间一条细线 */
+[data-phx-main]:has(> #global_settings) .column > .field.is-horizontal {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin: 0 !important;
+  padding: 12px 0;
+  border-top: 1px solid var(--tm-line);
+}
+
+[data-phx-main]:has(> #global_settings) .column > h2 + .field.is-horizontal {
+  border-top: 0;
+}
+
+[data-phx-main]:has(> #global_settings) .field.is-horizontal > .field-label {
+  flex: 1 1 140px;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  text-align: left;
+}
+
+[data-phx-main]:has(> #global_settings) .field.is-horizontal > .field-label .label {
+  margin: 0;
+  color: var(--tm-text);
+  font-size: 15.5px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+[data-phx-main]:has(> #global_settings) .field.is-horizontal > .field-label .label .icon {
+  color: var(--tm-text-hint);
+}
+
+[data-phx-main]:has(> #global_settings) .field.is-horizontal > .field-body {
+  display: flex;
+  flex: 1 1 190px;
+  justify-content: flex-end;
+  min-width: 0;
+  max-width: 340px;
+}
+
+[data-phx-main]:has(> #global_settings) .field.is-horizontal > .field-body > .field {
+  flex: 1 1 auto;
+  min-width: 0 !important;
+  margin: 0;
+}
+
+/* 开关、按钮那一行不需要撑满，靠右放 */
+[data-phx-main]:has(> #global_settings) .field.is-horizontal:has(.switch, .button) > .field-body,
+[data-phx-main]:has(> #global_settings) .field.is-horizontal > .field-body > .field:has(.switch, .button) {
+  flex: 0 0 auto;
+}
+
+[data-phx-main]:has(> #global_settings) .field.is-horizontal .control:has(> .switch),
+[data-phx-main]:has(> #global_settings) .field.is-horizontal:has(.button) .control {
+  display: flex;
+  flex-grow: 0;
+  justify-content: flex-end;
+}
+
+/* 手机上下拉框、输入框放到名字下面占满一行，点起来不局促 */
+@media screen and (max-width: 768px) {
+  [data-phx-main]:has(> #global_settings) .field.is-horizontal:not(:has(.switch, .button)) > .field-body {
+    flex-basis: 100%;
+    max-width: none;
+  }
+}
+
+/* 网址输入框占满整行 */
+[data-phx-main]:has(> #global_settings) .field.is-horizontal:has(input[type="url"]) > .field-body {
+  flex-basis: 100%;
+  max-width: none;
+}
+
+[data-phx-main]:has(> #global_settings) .select select,
+[data-phx-main]:has(> #global_settings) .input {
+  background-color: var(--tm-surface-2);
+  border-color: transparent;
+}
+
+[data-phx-main]:has(> #global_settings) .select select:hover,
+[data-phx-main]:has(> #global_settings) .input:hover {
+  border-color: var(--tm-line-strong);
+}
+
+[data-phx-main]:has(> #global_settings) .select select:focus,
+[data-phx-main]:has(> #global_settings) .input:focus {
+  border-color: var(--tm-accent);
+  background-color: var(--tm-surface);
+}
+
+/* 「里程标定方式」旁边 ⓘ 的解释只在鼠标悬停时出现；手机没有悬停，直接显示在名字下面 */
+@media (hover: none) {
+  [data-phx-main]:has(> #global_settings) .field-label .label[data-tooltip] {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    border-bottom: 0;
+    cursor: default;
+  }
+
+  [data-phx-main]:has(> #global_settings) .field-label .label[data-tooltip]::before {
+    display: none !important;
+  }
+
+  /* 用 ::after 排在名字后面，读屏顺序和看到的一致 */
+  [data-phx-main]:has(> #global_settings) .field-label .label[data-tooltip]::after {
+    content: attr(data-tooltip);
+    flex-basis: 100%;
+    margin-top: 4px;
+    color: var(--tm-text-hint);
+    font: 400 13px/1.45 var(--tm-font);
+    text-align: left;
+    white-space: normal;
+    word-break: normal;
+  }
+}
+
+/* 「休眠条件」里的复选框：TeslaMate 里唯一一个原生复选框，做成和开关一套的圆角勾选框 */
+form[id^="car_settings_"] .field-body .columns.is-gapless {
+  margin: 0 !important;
+}
+
+form[id^="car_settings_"] .field-body .columns.is-gapless > .column {
+  padding: 0;
+}
+
+[data-phx-main]:has(> #global_settings) .checkbox {
+  gap: 4px;
+}
+
+[data-phx-main]:has(> #global_settings) input[type="checkbox"]:not(.switch) {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  border: 1.5px solid var(--tm-text-3);
+  border-radius: 7px;
+  background: transparent center / 14px 14px no-repeat;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+[data-phx-main]:has(> #global_settings) input[type="checkbox"]:not(.switch):checked {
+  border-color: transparent;
+  background-color: var(--tm-green);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+/* 暗色下勾选底色是亮绿，白勾看不清，换成深色勾 */
+html[data-theme="dark"] [data-phx-main]:has(> #global_settings) input[type="checkbox"]:not(.switch):checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' fill='none' stroke='%230b0c0e' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+[data-phx-main]:has(> #global_settings) input[type="checkbox"]:not(.switch):focus-visible {
+  outline: 2px solid var(--tm-accent);
+  outline-offset: 2px;
+}
+
+/* 版本 / GitHub / 文档 */
+table.about.table {
+  margin: 8px auto 0;
+  background: transparent;
+  font-size: 14px;
+}
+
+table.about.table th,
+table.about.table td {
+  padding: 3px 0;
+}
+
+table.about.table th {
+  padding-right: 12px;
+  color: var(--tm-text-hint);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+table.about.table td {
+  color: var(--tm-text);
+}
+
+@media screen and (max-width: 360px) {
+  table.about.table {
+    font-size: 13px;
+  }
+}
+
+button[phx-click="sign_out"] {
+  height: 40px;
+  padding: 0 22px;
+  background: var(--tm-red-soft) !important;
+  color: var(--tm-red) !important;
+}
+
+/* ------------------------------------------------------------------ 地理围栏列表 */
+
+.breadcrumb + .button.is-pulled-right {
+  float: none !important;
+  display: flex;
+  width: fit-content;
+  margin: -58px 0 22px auto !important;
+  height: 38px;
+  padding: 0 14px 0 16px;
+  gap: 2px;
+}
+
+.breadcrumb:has(+ .button.is-pulled-right) li.is-active {
+  padding-right: 120px;
+}
+
+.breadcrumb ~ table.table {
+  display: block;
+  overflow: hidden;
+  border: 1px solid var(--tm-line);
+  border-radius: var(--tm-r-lg);
+  background: var(--tm-surface);
+  box-shadow: var(--tm-shadow);
+}
+
+.breadcrumb ~ table.table thead {
+  display: none;
+}
+
+.breadcrumb ~ table.table tbody {
+  display: block;
+}
+
+.breadcrumb ~ table.table tr {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 12px 12px 16px;
+  border-top: 1px solid var(--tm-line);
+}
+
+.breadcrumb ~ table.table tbody tr:first-child {
+  border-top: 0;
+}
+
+.breadcrumb ~ table.table td {
+  padding: 0 !important;
+  border: 0;
+}
+
+/* 名字格保持块级：原版的 .is-truncated 靠 text-overflow 打省略号，只对块级元素生效 */
+.breadcrumb ~ table.table td:first-child {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none !important;
+  color: var(--tm-text);
+  font-size: 16px;
+  font-weight: 600 !important;
+  line-height: 36px;
+}
+
+.breadcrumb ~ table.table td:first-child::before {
+  content: "\F0352";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: var(--tm-accent-soft);
+  color: var(--tm-accent);
+  font: normal normal normal 20px/1 "Material Design Icons";
+  vertical-align: top;
+  margin-right: 12px;
+}
+
+.breadcrumb ~ table.table td.is-hidden-mobile {
+  flex: 0 0 auto;
+  width: auto !important;
+  color: var(--tm-text-2);
+  font-size: 13.5px;
+  font-weight: 400 !important;
+  white-space: nowrap;
+}
+
+.breadcrumb ~ table.table td:last-child {
+  flex: 0 0 auto;
+}
+
+.breadcrumb ~ table.table .field.is-grouped {
+  float: none !important;
+  gap: 10px;
+  margin: 0;
+}
+
+/* 桌面上半径那一列没有表头了，前面加个半径图标说明是什么 */
+.breadcrumb ~ table.table td:nth-child(3) {
+  min-width: 64px;
+  text-align: right;
+}
+
+.breadcrumb ~ table.table td:nth-child(3)::before {
+  content: "\F0CC1";
+  margin-right: 4px;
+  color: var(--tm-text-hint);
+  font: normal normal normal 16px/1 "Material Design Icons";
+  vertical-align: -2px;
+}
+
+/* 整行点下去都进入编辑（像 iOS 列表），删除按钮单独浮在上面 */
+.breadcrumb ~ table.table tr {
+  position: relative;
+}
+
+.breadcrumb ~ table.table .field.is-grouped > .control,
+.breadcrumb ~ table.table .button.is-info.is-light {
+  position: static;
+}
+
+.breadcrumb ~ table.table .button.is-info.is-light::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.breadcrumb ~ table.table .button.is-info.is-light:active {
+  transform: none;
+}
+
+.breadcrumb ~ table.table .button.is-danger.is-light {
+  position: relative;
+  z-index: 1;
+}
+
+/* 只有按到编辑（整行覆盖层）时整行变灰，按删除不跟着变 */
+.breadcrumb ~ table.table tr:has(.button.is-info.is-light:active) {
+  background: var(--tm-surface-2);
+}
+
+/* 桌面上的坐标、半径浮到覆盖层上面，还能选中复制 */
+.breadcrumb ~ table.table td.is-hidden-mobile {
+  position: relative;
+  z-index: 1;
+}
+
+.breadcrumb ~ table.table .field.is-grouped > .control {
+  margin: 0 !important;
+}
+
+.breadcrumb ~ table.table .button.is-small {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 12px;
+}
+
+.breadcrumb ~ table.table .button.is-info.is-light {
+  background: var(--tm-surface-2);
+  color: var(--tm-text-2);
+}
+
+.breadcrumb ~ table.table .button.is-danger.is-light {
+  background: var(--tm-red-soft);
+  color: var(--tm-red);
+}
+
+.breadcrumb ~ table.table .button .mdi {
+  font-size: 18px;
+}
+
+/* ------------------------------------------------------------------ 地理围栏编辑 / 充电费用：表单卡片 */
+
+form#geo_fence,
+form.charging_process {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 18px;
+  border: 1px solid var(--tm-line);
+  border-radius: var(--tm-r-xl);
+  background: var(--tm-surface);
+  box-shadow: var(--tm-shadow);
+}
+
+[data-phx-main]:has(> form#geo_fence) > .breadcrumb,
+[data-phx-main]:has(> form.charging_process) > .breadcrumb {
+  max-width: 760px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* 标签放到控件上方，不再左右两栏 */
+form#geo_fence .field.is-horizontal,
+form.charging_process .field.is-horizontal {
+  display: block;
+  margin-bottom: 16px;
+}
+
+form#geo_fence .field.is-horizontal > .field-label,
+form.charging_process .field.is-horizontal > .field-label {
+  min-width: 0 !important;
+  margin: 0 0 7px;
+  padding: 0;
+  text-align: left;
+}
+
+form#geo_fence .field.is-horizontal > .field-label:empty,
+form.charging_process .field.is-horizontal > .field-label:empty,
+form#geo_fence .field.is-horizontal > .field-label:not(:has(*)),
+form.charging_process .field.is-horizontal > .field-label:not(:has(*)) {
+  display: none;
+}
+
+form#geo_fence .field-label .label,
+form.charging_process .field-label .label {
+  color: var(--tm-text-2);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+form#geo_fence #map_container,
+form.charging_process .card-image {
+  overflow: hidden;
+  border-radius: var(--tm-r-lg);
+  background: var(--tm-surface-2);
+}
+
+@media screen and (max-width: 768px) {
+  form#geo_fence #map {
+    height: 320px !important;
+  }
+
+  /* 手机上地图顶满卡片，像 Tesla App 的位置卡片；「位置」这个标签就不需要了 */
+  form#geo_fence {
+    padding-top: 0;
+  }
+
+  form#geo_fence .field.is-horizontal:has(#map_container) > .field-label {
+    display: none;
+  }
+
+  form#geo_fence #map_container {
+    margin: 0 -18px 4px;
+    border-radius: calc(var(--tm-r-xl) - 1px) calc(var(--tm-r-xl) - 1px) 0 0;
+  }
+}
+
+form.charging_process .map {
+  height: 220px !important;
+}
+
+form.charging_process .field.is-grouped-multiline {
+  gap: 8px;
+}
+
+form.charging_process .field.is-grouped-multiline > .control {
+  min-width: 0;
+  max-width: 100%;
+  flex-shrink: 1;
+  margin: 0 !important;
+}
+
+/* 地址可能很长，允许换行，别被卡片切掉 */
+form.charging_process .tags.has-addons {
+  flex-wrap: nowrap;
+  align-items: stretch;
+  max-width: 100%;
+  margin: 0;
+}
+
+form.charging_process .tags.has-addons .tag {
+  height: auto;
+  min-height: 28px;
+}
+
+form.charging_process .tags.has-addons .tag:last-child:not(:first-child) {
+  min-width: 0;
+  padding-block: 4px;
+  border-radius: 0 14px 14px 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  justify-content: flex-start;
+}
+
+form.charging_process .tags.has-addons .tag:first-child:not(:last-child) {
+  border-radius: 14px 0 0 14px;
+}
+
+/* 输入框和设置页一样用浅灰填充 */
+form#geo_fence .select select,
+form.charging_process .select select,
+form#geo_fence .input,
+form.charging_process .input {
+  background-color: var(--tm-surface-2);
+  border-color: transparent;
+}
+
+form#geo_fence .select select:hover,
+form.charging_process .select select:hover,
+form#geo_fence .input:hover,
+form.charging_process .input:hover {
+  border-color: var(--tm-line-strong);
+}
+
+form#geo_fence .select select:focus,
+form.charging_process .select select:focus,
+form#geo_fence .input:focus,
+form.charging_process .input:focus {
+  border-color: var(--tm-accent);
+  background-color: var(--tm-surface);
+}
+
+/* 「每度电 + 金额」这一组：窄屏上也不换行（原版给 .field.is-horizontal .field 开了 flex-wrap） */
+form#geo_fence .field.has-addons .control.is-expanded,
+form.charging_process .field.has-addons .control.is-expanded {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+form#geo_fence .field.has-addons .control.is-expanded .input,
+form.charging_process .field.has-addons .control.is-expanded .input {
+  min-width: 0;
+}
+
+form#geo_fence .field.has-addons .select select:not(:focus),
+form.charging_process .field.has-addons .select select:not(:focus) {
+  box-shadow: inset -1px 0 0 var(--tm-line-strong);
+}
+
+/* 充电费用页只填一个数：数字大一点、去掉桌面浏览器的上下箭头 */
+form.charging_process .field.has-addons .input[type="number"] {
+  text-overflow: ellipsis;
+  height: 48px;
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+form.charging_process .field.has-addons .input[type="number"]::placeholder {
+  font-weight: 400;
+}
+
+@media screen and (max-width: 389px) {
+  form.charging_process .field.has-addons .input[type="number"]::placeholder {
+    font-size: 15px;
+  }
+}
+
+form.charging_process .field.has-addons .input[type="number"]::-webkit-inner-spin-button,
+form.charging_process .field.has-addons .input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+form.charging_process .field.has-addons .select,
+form.charging_process .field.has-addons .select select {
+  height: 48px;
+}
+
+form.charging_process .field.has-addons .select::after {
+  margin-top: -0.35em;
+}
+
+form#geo_fence .field.has-addons .control .select select,
+form.charging_process .field.has-addons .control .select select {
+  border-radius: 12px 0 0 12px;
+}
+
+form#geo_fence .field.has-addons .control.is-expanded .input,
+form.charging_process .field.has-addons .control.is-expanded .input {
+  border-radius: 0 12px 12px 0;
+}
+
+form#geo_fence .field.is-grouped:last-child,
+form.charging_process .field.is-grouped:last-child {
+  gap: 10px;
+}
+
+form#geo_fence .field.is-horizontal:last-child,
+form.charging_process .field.is-horizontal:last-child {
+  margin: 22px 0 0 !important;
+}
+
+form#geo_fence .field.is-horizontal:last-child .field.is-grouped > .control,
+form.charging_process .field.is-horizontal:last-child .field.is-grouped > .control {
+  flex: 1 1 0;
+  min-width: 0 !important;
+  margin: 0 !important;
+}
+
+form#geo_fence .field.is-horizontal:last-child .button,
+form.charging_process .field.is-horizontal:last-child .button {
+  width: 100%;
+  height: 46px;
+  border-radius: var(--tm-r-md);
+}
+
+/* 桌面以下不居中收窄：左右边和 logo、其它页面对齐 */
+@media screen and (max-width: 1023px) {
+  form#geo_fence,
+  form.charging_process,
+  [data-phx-main]:has(> form#geo_fence) > .breadcrumb,
+  [data-phx-main]:has(> form.charging_process) > .breadcrumb,
+  [data-phx-main]:has(> #global_settings) > * {
+    max-width: none;
+  }
+}
+
+/* ------------------------------------------------------------------ 登录页 */
+
+.mfa.columns {
+  margin-top: 4vh;
+}
+
+form#tokens.box {
+  padding: 28px 24px 22px;
+  border-radius: var(--tm-r-xl);
+}
+
+form#tokens.box::before {
+  content: "\F010D";
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 20px;
+  border-radius: 18px;
+  background: var(--tm-accent-soft);
+  color: var(--tm-accent);
+  font: normal normal normal 30px/1 "Material Design Icons";
+}
+
+form#tokens .input {
+  height: 46px;
+}
+
+form#tokens .control.has-icons-left .icon {
+  height: 46px;
+}
+
+form#tokens .button.is-fullwidth {
+  height: 48px;
+  font-size: 16px;
+}
+
+form#tokens p.is-size-7 {
+  margin-top: 14px;
+  color: var(--tm-text-hint);
+  font-weight: 400 !important;
+  font-size: 13px !important;
+  font-style: normal !important;
+  line-height: 1.5;
+}
+
+/* ------------------------------------------------------------------ 导入页（TeslaFi） */
+
+[data-phx-main] .box .title {
+  color: var(--tm-text);
+}
+
+/* ------------------------------------------------------------------ 动效偏好 */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

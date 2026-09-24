@@ -24,6 +24,10 @@
 #   TM_TOU_RECALC=1 bash deploy/deploy.sh --tou    按当前电价重算该围栏里所有历史充电（先自动备份）
 #   TM_TOU_PRICES=off bash deploy/deploy.sh --tou  关闭分时电价
 #
+# 换肤（默认开启，只改网页样式，不动 TeslaMate 本身，见 deploy/theme/）：
+#   TM_THEME=off bash deploy/deploy.sh             关掉换肤，恢复原版界面
+#   TM_THEME=on bash deploy/deploy.sh              重新打开
+#
 # 可覆盖的环境变量：
 #   TM_DOMAIN         站点域名（必填，首次给一次即可；仓库里不写死任何人的域名）
 #   TM_WEB_USER       网页登录用户名（默认 teslamate）
@@ -31,6 +35,7 @@
 #   CADDY_NETWORK     Caddy 所在 docker 网络名（默认自动探测）
 #   CADDYFILE_HOST    宿主上的 Caddyfile 路径（默认 /root/matrix-chat/Caddyfile）
 #   TM_TOU_GEOFENCE   分时电价作用的地理围栏（名字或 ID；只有一个围栏时自动选中）
+#   TM_THEME          on / off，是否启用换肤（默认 on，给过一次就记进 .env）
 #   FORCE=1           内存不足时也强行部署
 #
 set -euo pipefail
@@ -45,6 +50,7 @@ _override_password="${TM_WEB_PASSWORD:-}"
 _override_tou="${TM_TOU_PRICES:-}"
 _override_tou_file="${TM_TOU_FILE:-}"
 _override_tou_gf="${TM_TOU_GEOFENCE:-}"
+_override_theme="${TM_THEME:-}"
 if [[ -f "$ENV_FILE" ]]; then
   set -a
   # shellcheck source=/dev/null
@@ -57,7 +63,8 @@ TM_WEB_PASSWORD="$_override_password"
 [[ -n "$_override_tou" ]] && { TM_TOU_PRICES="$_override_tou"; TM_TOU_FILE=""; }
 [[ -n "$_override_tou_file" ]] && { TM_TOU_FILE="$_override_tou_file"; TM_TOU_PRICES=""; }
 [[ -n "$_override_tou_gf" ]] && TM_TOU_GEOFENCE="$_override_tou_gf"
-unset _override_domain _override_password _override_tou _override_tou_file _override_tou_gf
+[[ -n "$_override_theme" ]] && TM_THEME="$_override_theme"
+unset _override_domain _override_password _override_tou _override_tou_file _override_tou_gf _override_theme
 
 # ------------------------------------------------------------------ 参数与常量
 DOMAIN="${TM_DOMAIN:-}"
@@ -71,6 +78,14 @@ TOU_PRICES="$(printf '%s' "${TM_TOU_PRICES:-}" | tr -d ' ' | sed 's/，/,/g')"
 TOU_FILE="${TM_TOU_FILE:-}"
 TOU_GEOFENCE="${TM_TOU_GEOFENCE:-}"
 TOU_SQL_FILE="$PROJECT_DIR/.tou.sql"
+THEME="$(printf '%s' "${TM_THEME:-on}" | tr '[:upper:]' '[:lower:]')"
+THEME_UPSTREAM="teslamate-theme:8080"
+TM_UPSTREAM="teslamate:4000"
+UPSTREAMS="$TM_UPSTREAM"   # 换肤代理检查通过后改成「换肤代理 + 本体兜底」
+# 被动健康检查只在有两个上游时才有意义；只有一个上游时开着它，TeslaMate 重启后
+# Caddy 会把它记成「坏的」，恢复后还要白白返回一阵 503
+FAIL_DURATION=0
+THEME_STATUS="off"         # off / on / failed，最后打印用
 
 BEGIN_MARK='# >>> teslamate BEGIN'
 END_MARK='# <<< teslamate END'
@@ -106,6 +121,17 @@ warn()  { printf '    %s⚠ %s%s\n' "$C_YELLOW" "$*" "$C_RESET"; }
 die()   { printf '\n%s✘ 错误：%s%s\n' "$C_RED" "$*" "$C_RESET" >&2; exit 1; }
 
 dc() { (cd "$PROJECT_DIR" && docker compose "$@"); }
+
+theme_enabled() { [[ "$THEME" != "off" ]]; }
+
+# 按当前开关拼出要启用的 compose profile（换肤 theme、分时电价 tou）
+compose_profiles() {
+  local p=()
+  theme_enabled && p+=(theme)
+  tou_enabled && [[ -s "$TOU_SQL_FILE" ]] && p+=(tou)
+  local IFS=,
+  printf '%s' "${p[*]}"
+}
 
 env_set() {
   local key="$1" value="$2"
@@ -195,6 +221,8 @@ update_caddyfile() {
         -e "s|__BASIC_AUTH__|${BASIC_AUTH_DIRECTIVE}|g" \
         -e "s|__AUTH_USER__|${WEB_USER}|g" \
         -e "s|__AUTH_HASH__|${TM_WEB_HASH}|g" \
+        -e "s|__UPSTREAMS__|${UPSTREAMS}|g" \
+        -e "s|__FAIL_DURATION__|${FAIL_DURATION}|g" \
         "$SITE_SNIPPET" >> "$new"
   fi
 
@@ -240,6 +268,15 @@ check_prereq() {
   docker compose version >/dev/null 2>&1 || die "找不到 docker compose 插件（v2）"
   [[ -f "$PROJECT_DIR/docker-compose.yml" ]] || die "在 $PROJECT_DIR 下找不到 docker-compose.yml"
   [[ -f "$SITE_SNIPPET" ]] || die "找不到站点片段 $SITE_SNIPPET"
+  case "$THEME" in
+    on|off) ;;
+    *) die "TM_THEME 只能是 on 或 off（现在是「$THEME」）" ;;
+  esac
+  if theme_enabled; then
+    [[ -f "$PROJECT_DIR/deploy/theme/nginx/teslamate-theme.conf" && -f "$PROJECT_DIR/deploy/theme/assets/theme.css" \
+       && -f "$PROJECT_DIR/deploy/theme/assets/theme.js" ]] \
+      || die "找不到换肤文件 deploy/theme/，请确认代码完整（或用 TM_THEME=off 关掉换肤）"
+  fi
   ok "root / docker / compose / 项目文件 均就绪"
 
   # TeslaMate + Postgres + Grafana 常驻约 500MB。内存 + 空闲 swap 合计不够时硬塞，
@@ -334,6 +371,7 @@ prepare_env() {
     ok "复用已有网页登录密码"
   fi
   env_set TM_WEB_USER "$WEB_USER"
+  env_set TM_THEME "$THEME"
   chmod 600 "$ENV_FILE"
   # 单文件挂载的源文件必须先存在，否则 docker 会把它建成目录
   [[ -f "$TOU_SQL_FILE" ]] || : > "$TOU_SQL_FILE"
@@ -342,16 +380,22 @@ prepare_env() {
 start_stack() {
   step "拉取镜像并启动（不映射任何宿主端口）"
   mkdir -p "$PROJECT_DIR/import"
-  if tou_enabled && [[ -s "$TOU_SQL_FILE" ]]; then
-    export COMPOSE_PROFILES=tou
-  fi
+  COMPOSE_PROFILES="$(compose_profiles)"
+  export COMPOSE_PROFILES
   dc pull || die "镜像拉取失败"
   dc up -d --remove-orphans || die "docker compose up 失败"
+  # 不在当前 profile 里的服务 compose 不会去停，关掉换肤时要自己删
+  theme_enabled || docker rm -f teslamate-theme >/dev/null 2>&1 || true
   ok "容器已启动"
 
   # 从 Caddy 容器里去连上游：顺带验证了"两边确实在同一个 docker 网络"
   if ! caddy_exec sh -c 'command -v wget' >/dev/null 2>&1; then
     warn "Caddy 容器里没有 wget，跳过上游连通性检查"
+    # 没法验证就不冒险：先直连原版，靠 Caddy 的回落也能用，但少一层不确定
+    if theme_enabled; then
+      THEME_STATUS="failed"
+      warn "同样没法验证换肤代理，本次先不启用换肤（网页为原版界面）"
+    fi
     return 0
   fi
   info "等待 TeslaMate 完成数据库迁移并就绪（最多 ${UPSTREAM_TIMEOUT}s）"
@@ -373,6 +417,62 @@ start_stack() {
   else
     warn "Grafana 暂未就绪（它启动比较慢），稍后可看：docker logs teslamate-grafana"
   fi
+  check_theme
+}
+
+# 换肤代理自检。任何一步不过都只是退回原版界面（Caddy 直连 teslamate），不拦部署
+check_theme() {
+  if ! theme_enabled; then
+    dim "换肤已关闭（TM_THEME=off），网页为 TeslaMate 原版界面"
+    return 0
+  fi
+  THEME_STATUS="failed"
+  local out
+  # 用一次性容器校验配置：换肤容器要是正卡在重启循环里，docker exec 根本进不去。
+  # --entrypoint nginx 跳过镜像自带的启动脚本，出错时只剩 nginx 自己的报错
+  if ! out="$(dc run --rm --no-deps -T --entrypoint nginx teslamate-theme -t 2>&1)"; then
+    printf '%s\n' "$out" | grep -v 'Creating\|Created\|Starting\|Started' | tail -n 5 | sed 's/^/      /'
+    if [[ "$out" == *"emerg"* || "$out" == *"test failed"* ]]; then
+      warn "换肤代理配置校验失败，本次先不用它（网页为原版界面）。请检查 deploy/theme/nginx/"
+    else
+      warn "没法校验换肤代理配置（docker compose 报错，见上），本次先不用它（网页为原版界面）"
+    fi
+    return 0
+  fi
+  # 目录挂载：git pull 后的新配置、新样式容器里已经能看到，配置要 reload 才生效；
+  # 没在正常运行（比如之前配置坏了一直在重启）就直接重启它
+  if [[ "$(docker inspect -f '{{.State.Status}}' teslamate-theme 2>/dev/null)" == "running" ]]; then
+    # nginx -s reload 只是给主进程发个信号就返回，新的 worker 起来之前请求还是旧配置在处理，
+    # 马上去检查会误判。等到出现新的 worker 进程再往下走（最多约 5 秒）
+    local old_workers new_workers
+    old_workers="$(docker exec teslamate-theme pgrep -P 1 2>/dev/null | sort | tr '\n' ' ' || true)"
+    docker exec teslamate-theme nginx -s reload >/dev/null 2>&1 || true
+    for _ in $(seq 1 25); do
+      sleep 0.2
+      new_workers="$(docker exec teslamate-theme pgrep -P 1 2>/dev/null | sort | tr '\n' ' ' || true)"
+      [[ -n "$new_workers" && "$new_workers" != "$old_workers" ]] && break
+    done
+  else
+    docker restart teslamate-theme >/dev/null 2>&1 || true
+  fi
+  # 顺带验证了三件事：Caddy 连得上换肤代理、换肤代理连得上 teslamate、样式确实插进了页面
+  # 先存进变量再匹配：直接 | grep -q 的话 grep 提前退出，wget 收到 SIGPIPE，pipefail 下整条算失败
+  local html err="$WORK_DIR/theme-wget.err"
+  for _ in 1 2 3 4 5 6; do
+    html="$(caddy_exec wget -q -T 5 -O - "http://$THEME_UPSTREAM/sign_in" 2>"$err" || true)"
+    if [[ "$html" == *"/_theme/theme.css"* ]]; then
+      UPSTREAMS="$THEME_UPSTREAM $TM_UPSTREAM"
+      FAIL_DURATION=10s
+      THEME_STATUS="on"
+      ok "换肤已启用：Caddy → teslamate-theme:8080 → teslamate:4000（换肤代理出问题时自动直连原版）"
+      return 0
+    fi
+    sleep 2
+  done
+  [[ -s "$err" ]] && sed 's/^/      /' "$err" | tail -n 3
+  # 只留真正的报错：reload 会刷一堆 [notice]，访问日志也帮不上忙
+  docker logs --tail 80 teslamate-theme 2>&1 | grep -E '\[(error|crit|alert|emerg)\]' | tail -n 10 | sed 's/^/      /' || true
+  warn "换肤代理没有按预期工作（上面是它的报错），本次先不用它，网页为原版界面"
 }
 
 final_check() {
@@ -615,7 +715,8 @@ $(printf '%s\n' "$rows" | sed 's/^/      /')"
     ok "目前没有待计算的充电"
   fi
 
-  export COMPOSE_PROFILES=tou
+  COMPOSE_PROFILES="$(compose_profiles)"
+  export COMPOSE_PROFILES
   dc up -d teslamate-tou || die "teslamate-tou 启动失败"
   ok "定时计算已启动：以后每次在这个围栏里充完电，5 分钟内自动算好"
   dim "计算记录：docker logs -f teslamate-tou"
@@ -657,6 +758,7 @@ ${C_BOLD}常用命令${C_RESET}
    升级            bash deploy/deploy.sh
    备份数据库      bash deploy/deploy.sh --backup
    分时电价        TM_TOU_FILE=deploy/tou/shandong-ev.conf bash deploy/deploy.sh --tou
+   换肤开 / 关     TM_THEME=on|off bash deploy/deploy.sh   ${C_DIM}（当前：$(case "$THEME_STATUS" in on) printf '已启用' ;; failed) printf '已开启但没生效，见上方 ⚠，网页暂为原版' ;; *) printf '已关闭，原版界面' ;; esac)）${C_RESET}
    看日志          docker logs -f teslamate
    下线            bash deploy/deploy.sh --rollback   ${C_DIM}（数据卷保留）${C_RESET}
 
@@ -710,10 +812,10 @@ do_rollback() {
   detect_caddy
   update_caddyfile remove
   step "停止并移除容器（不加 -v，数据卷保留）"
-  # 带上 tou profile，compose 才认得 teslamate-tou，否则它会被落下
-  export COMPOSE_PROFILES=tou
+  # 带上所有 profile，compose 才认得 teslamate-theme / teslamate-tou，否则它们会被落下
+  export COMPOSE_PROFILES=theme,tou
   [[ -f "$TOU_SQL_FILE" ]] || : > "$TOU_SQL_FILE"
-  dc down --remove-orphans || warn "docker compose down 失败，可手工 docker rm -f teslamate teslamate-db teslamate-grafana teslamate-mqtt teslamate-tou"
+  dc down --remove-orphans || warn "docker compose down 失败，可手工 docker rm -f teslamate teslamate-db teslamate-grafana teslamate-mqtt teslamate-tou teslamate-theme"
   cat <<EOF
 
 ${C_BOLD}${C_GREEN}回滚完成。${C_RESET}

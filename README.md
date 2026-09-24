@@ -7,6 +7,10 @@
 - 改 Caddyfile 前自动备份，校验或 reload 失败自动回滚，不影响 Caddy 上已有的站点。
 - 所有密钥首次运行时随机生成，保存在服务器本地的 `.env`，不进仓库。
 
+> This project is an unofficial community tool and is not affiliated with, endorsed by, or supported by the official TeslaMate project.
+>
+> 本项目是非官方的社区工具，与 TeslaMate 官方项目没有任何关联，也未获其认可或支持。
+
 ## 前提
 
 - 服务器上有一个正在运行的 Caddy 容器，Caddyfile 以文件方式挂进去（默认按 `matrix-chat-caddy-1` + `/root/matrix-chat/Caddyfile`，不同可用环境变量覆盖，见下）
@@ -47,6 +51,23 @@ bash deploy/deploy.sh --rollback                  # 下线并移除 Caddy 站点
 docker logs -f teslamate                          # 看日志
 ```
 
+## 网页换肤（默认开启）
+
+TeslaMate 自带的网页比较朴素。这里在 Caddy 和 TeslaMate 之间夹了一个很小的 nginx（`teslamate-theme`，约 5MB 内存），给每个页面加一份新样式，TeslaMate 本身一行不改，升级镜像照常：
+
+- 手机优先：底部标签栏（主页 / 控制台 / 收藏点 / 设置），「控制台」点开是一个 Grafana 面板列表；输入框不小于 16px，iPhone 上点输入框不会自动放大页面。
+- 首页车辆卡片：状态胶囊（充电绿、行驶蓝、正在休眠琥珀），大号电量加电量条（带充电上限刻度），「100% 时续航」直接显示，其余数据排成两列（桌面三列）小卡片；没锁车、车门车窗开着、胎压低这类图标标成琥珀色。
+- 设置页改成 iOS 那种分组列表；收藏点列表整行可点、编辑页地图顶满卡片；充电费用、登录页统一成卡片式。
+- 亮 / 暗两套配色跟随 TeslaMate「设置 → 主题」，文字对比度按 WCAG AA 调过。
+- 不从外网加载任何字体或脚本，国内打开不受影响。
+
+换肤代理挂了也不影响使用：Caddy 会自动改为直连 TeslaMate，只是变回原版界面。样式在 [deploy/theme/assets/](deploy/theme/assets/)，改完 `git pull` 后浏览器刷新即生效。
+
+```bash
+TM_THEME=off bash deploy/deploy.sh    # 关掉，恢复原版界面
+TM_THEME=on bash deploy/deploy.sh     # 重新打开
+```
+
 ## 分时电价（可选）
 
 TeslaMate 的地理围栏只能填一个固定电价。家里是分时电价（尤其是像山东这样按月份换时段的）时，用这里的分时计费：每 5 分钟检查一次该围栏里刚结束、还没算钱的充电，把每段电量按它所在的**本地月份和时刻**查电价，费用写回 TeslaMate，所有页面和 Grafana 面板都能直接看到。它只读写本地数据库，不和特斯拉通信，不影响车休眠。
@@ -83,6 +104,7 @@ TM_TOU_PRICES='23:00-07:00=0.3,07:00-23:00=0.6' bash deploy/deploy.sh --tou
 | `CADDYFILE_HOST` | `/root/matrix-chat/Caddyfile` | 宿主上的 Caddyfile 路径 |
 | `TM_TOU_FILE` | 无 | 分时电价配置文件（按月份变化时用） |
 | `TM_TOU_GEOFENCE` | 自动 | 分时电价作用的地理围栏（名字或 ID） |
+| `TM_THEME` | `on` | 网页换肤开关（`on` / `off`），给过一次就记进 `.env` |
 | `FORCE` | `0` | 设为 `1` 时内存不足也继续部署 |
 
 ## 注意

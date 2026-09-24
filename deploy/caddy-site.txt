@@ -1,7 +1,7 @@
 # >>> teslamate BEGIN
 # TeslaMate —— 本段由 deploy/deploy.sh 按上下两行标记【整块】幂等替换，
 # 请不要在 BEGIN / END 之间放别的站点配置，否则重新部署时会被覆盖掉。
-# 下面用双下划线包起来的大写单词都是占位符（域名、认证指令名、用户名、密码哈希），写入时替换。
+# 下面用双下划线包起来的大写单词都是占位符（域名、认证指令名、用户名、密码哈希、上游），写入时替换。
 __DOMAIN__ {
 	encode zstd gzip
 
@@ -18,7 +18,14 @@ __DOMAIN__ {
 		__BASIC_AUTH__ {
 			__AUTH_USER__ __AUTH_HASH__
 		}
-		reverse_proxy teslamate:4000
+		# 开了换肤时上游是「teslamate-theme:8080 teslamate:4000」：平时走换肤代理，
+		# 它没起来或连不上时，当次请求改走 teslamate 本体（原版界面），10 秒后再试换肤代理。
+		# 只有一个上游时 fail_duration 写成 0（关掉被动健康检查），免得 TeslaMate 重启后多等一阵 503
+		reverse_proxy __UPSTREAMS__ {
+			lb_policy first
+			lb_try_duration 5s
+			fail_duration __FAIL_DURATION__
+		}
 	}
 
 	header {

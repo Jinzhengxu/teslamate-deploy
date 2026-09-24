@@ -4,3 +4,4 @@
 backups/
 import/
 *.log
+.gstack/

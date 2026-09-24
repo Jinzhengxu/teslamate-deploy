@@ -4,8 +4,9 @@
 #   1. 本服务【不映射任何宿主端口】。宿主的 80/443 属于已经在跑的
 #      matrix-chat-caddy-1，抢占会直接把已有的 matrix / poker 服务搞挂。
 #      外部流量的路径是：Cloudflare -> 宿主 443 -> 已有 Caddy 容器
-#      -> 同一 docker 网络内直连 teslamate:4000 / teslamate-grafana:3000。
-#   2. 只有 teslamate 和 teslamate-grafana 接入 Caddy 的外部网络；
+#      -> 同一 docker 网络内的 teslamate-theme:8080（换肤）-> teslamate:4000，
+#      以及 teslamate-grafana:3000。
+#   2. 只有 teslamate、teslamate-grafana 和换肤用的 teslamate-theme 接入 Caddy 的外部网络；
 #      数据库和 MQTT 只待在本项目自己的 default 网络里，别的项目碰不到。
 #   3. 服务名全部带 teslamate 前缀：接入共享网络后，名字就是 Caddy 那边的
 #      DNS 名，叫 database / grafana 这种通用名迟早和 matrix 那套撞车。
@@ -123,6 +124,29 @@ services:
           sleep 300
         done
     mem_limit: 64m
+    logging: *logging
+
+  # 换肤：夹在 Caddy 和 teslamate 之间的小 nginx，只往页面里加一份新样式（deploy/theme/），
+  # TeslaMate 本身不改，升级镜像照常。这个容器挂了也能用：Caddy 会回落到直连 teslamate:4000，
+  # 只是变回原版界面。属于 theme profile，关掉：TM_THEME=off bash deploy/deploy.sh
+  teslamate-theme:
+    image: nginx:stable-alpine
+    container_name: teslamate-theme
+    restart: unless-stopped
+    profiles:
+      - theme
+    depends_on:
+      - teslamate
+    volumes:
+      # 挂目录不挂单个文件：git pull 换掉文件（inode 变了）后容器里也能看到新内容
+      - ./deploy/theme/nginx:/etc/nginx/conf.d:ro
+      - ./deploy/theme/assets:/srv/theme:ro
+    expose:
+      - "8080"
+    # 只需要 Caddy 的网络：Caddy 从这里连进来，它也从这里连 teslamate
+    networks:
+      - caddy
+    mem_limit: 32m
     logging: *logging
 
   # 不对外开放。以后接 Home Assistant 之类要用 MQTT 时，再加 ports: ["127.0.0.1:1883:1883"]
