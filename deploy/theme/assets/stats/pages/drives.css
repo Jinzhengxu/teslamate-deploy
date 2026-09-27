@@ -1,0 +1,16 @@
+/* 行程列表（pages/drives.js）专用样式。只用 stats.css 的设计变量，亮暗自动适配。
+   布局、筛选条、按天分组、分页都用核心的 .tm-list-layout / ui.filterBar / ui.dayGroup / ui.pager，
+   这里只剩「正在行驶」「未完成的行程」两节的卡片边框和说明（和充电列表的「正在充电」「未完成的充电」一样） */
+
+.pg-drives-live {
+  border-color: var(--tm-accent-soft);
+}
+
+.pg-drives-incomplete {
+  border-color: var(--tm-amber-soft);
+}
+
+.pg-drives-incomplete-note {
+  margin: 0;
+  padding: 0 4px;
+}

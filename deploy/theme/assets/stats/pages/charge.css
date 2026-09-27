@@ -1,0 +1,112 @@
+/* 充电详情页（/stats/charges/:id）专用样式。只用 stats.css 的设计变量，亮暗自动适配。
+   页面样式离开后还留在 <head> 里，所以类名都带 pg-charge- 前缀，碰公共类时挂在页面根 .pg-charge 下面 */
+
+/* ---------------------------------------------------------------- 顶部：地图 + 地点、时间、标签 */
+
+.pg-charge-top {
+  align-items: start;
+}
+
+.pg-charge-hero {
+  overflow: hidden;
+}
+
+/* 地图贴着卡片上沿，圆角由卡片裁掉 */
+.pg-charge-hero .tm-map-wrap {
+  border-radius: 0;
+}
+
+.pg-charge-hero-body {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px 12px;
+}
+
+@media screen and (min-width: 769px) {
+  .pg-charge-hero-body {
+    padding: 18px 20px 14px;
+  }
+}
+
+.pg-charge-hero-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.pg-charge-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--tm-accent-soft);
+  color: var(--tm-accent);
+}
+
+.pg-charge-badge .tm-svg {
+  width: 22px;
+  height: 22px;
+}
+
+.pg-charge-badge.is-green {
+  background: var(--tm-green-soft);
+  color: var(--tm-green-text);
+}
+
+.pg-charge-badge.is-amber {
+  background: var(--tm-amber-soft);
+  color: var(--tm-amber-text);
+}
+
+.pg-charge-hero-text {
+  min-width: 0;
+}
+
+.pg-charge-place {
+  color: var(--tm-text);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.pg-charge-addr {
+  color: var(--tm-text-hint);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.pg-charge-when {
+  color: var(--tm-text-2);
+  font-size: 14px;
+}
+
+.pg-charge-tags {
+  gap: 6px;
+}
+
+.pg-charge-actions {
+  gap: 4px 8px;
+  margin: 2px -8px 0 -4px;
+}
+
+.pg-charge-actions .tm-btn {
+  height: 34px;
+  padding: 0 10px;
+}
+
+.pg-charge-actions .tm-btn.is-soft {
+  margin-left: 4px;
+}
+
+/* ---------------------------------------------------------------- 图表下面的说明（直流没有电压电流图） */
+
+.pg-charge-note {
+  margin-top: -6px;
+  padding: 0 4px;
+}

@@ -1,0 +1,243 @@
+/* 按天 / 周 / 月 / 年汇总（pages/statistics.js）。只用 stats.css 的设计变量，亮暗自动适配 */
+
+.pg-sum-bar {
+  display: flex;
+  min-width: 0;
+}
+
+/* 周期切换在手机上铺满，四个按钮一样宽 */
+@media screen and (max-width: 768px) {
+  .pg-sum-bar .tm-seg {
+    display: flex;
+    width: 100%;
+  }
+}
+
+/* ---------------------------------------------------------------- 图表卡片的标题 + 指标切换 */
+
+.pg-sum-chart-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 10px;
+}
+
+.pg-sum-chart-head .tm-card-title {
+  margin: 0;
+}
+
+.pg-sum-chart-head .tm-seg button {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+/* 触屏上还是 40px 高（核心 .tm-seg button 的触屏尺寸），上面这条选择器更具体，会把它盖掉 */
+@media (pointer: coarse) {
+  .pg-sum-chart-head .tm-seg button {
+    min-height: 40px;
+  }
+}
+
+@media screen and (max-width: 480px) {
+  .pg-sum-chart-head .tm-seg {
+    display: flex;
+    width: 100%;
+  }
+}
+
+/* ---------------------------------------------------------------- 手机 / 平板：每个周期一张卡（桌面是表格，JS 按宽度只画一种） */
+
+.pg-sum-cards {
+  display: grid;
+  gap: 10px;
+}
+
+.pg-sum-card {
+  overflow: hidden;
+}
+
+.pg-sum-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-height: 46px;
+  padding: 10px 36px 10px 14px;
+  position: relative;
+  border-bottom: 1px solid var(--tm-line);
+  color: var(--tm-text);
+  transition: background-color 0.12s;
+}
+
+.pg-sum-head:hover,
+.pg-sum-head:active {
+  background: var(--tm-surface-2);
+}
+
+.pg-sum-period {
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.pg-sum-note {
+  color: var(--tm-text-hint);
+  font-size: 12.5px;
+}
+
+.pg-sum-head-chevron {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  width: 18px;
+  height: 18px;
+  margin-top: -9px;
+  color: var(--tm-text-3);
+}
+
+.pg-sum-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media screen and (min-width: 560px) {
+  .pg-sum-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.pg-sum-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: 10px 14px 11px;
+  color: var(--tm-text-2);
+}
+
+/* 格子之间的细线：每格画右边和下边，最右一列不画右边、最后一行不画下边（卡片自己有边框） */
+.pg-sum-grid .pg-sum-cell {
+  border-right: 1px solid var(--tm-line);
+  border-bottom: 1px solid var(--tm-line);
+}
+
+.pg-sum-grid .pg-sum-cell:nth-child(2n) {
+  border-right: 0;
+}
+
+.pg-sum-grid .pg-sum-cell:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+@media screen and (min-width: 560px) {
+  .pg-sum-grid .pg-sum-cell:nth-child(2n) {
+    border-right: 1px solid var(--tm-line);
+  }
+
+  .pg-sum-grid .pg-sum-cell:nth-child(3n) {
+    border-right: 0;
+  }
+
+  .pg-sum-grid .pg-sum-cell:nth-last-child(-n + 3) {
+    border-bottom: 0;
+  }
+}
+
+a.pg-sum-cell {
+  transition: background-color 0.12s;
+}
+
+a.pg-sum-cell:hover,
+a.pg-sum-cell:active {
+  background: var(--tm-surface-2);
+}
+
+.pg-sum-cell-label {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--tm-text-hint);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.pg-sum-cell-label .tm-svg {
+  width: 14px;
+  height: 14px;
+  color: var(--tm-text-3);
+}
+
+.pg-sum-cell-value {
+  overflow: hidden;
+  color: var(--tm-text);
+  font-family: var(--tm-font-display);
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 次要的一行（ui.segs）：「¥0.45/度 · ¥9.66/百公里」在 320 宽下放不进一行时按段折，截断就丢信息了 */
+.pg-sum-cell-sub {
+  color: var(--tm-text-hint);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* ---------------------------------------------------------------- 桌面：表格 */
+
+.pg-sum-td {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 1px;
+  white-space: nowrap;
+}
+
+.tm-table .is-right .pg-sum-td {
+  align-items: flex-end;
+}
+
+.pg-sum-td small {
+  color: var(--tm-text-hint);
+  font-size: 12px;
+}
+
+/* 表格里的链接（行程次数、充电量、充电次数）用强调色、常规字重，和普通数字区分开；周期名还是粗体黑字 */
+.tm-table .pg-sum-td a {
+  color: var(--tm-accent);
+  font-weight: 500;
+}
+
+.tm-table .pg-sum-td a:hover {
+  text-decoration: underline;
+}
+
+.tm-table .pg-sum-td a.pg-sum-period-link {
+  color: var(--tm-text);
+  font-weight: 600;
+}
+
+.pg-sum-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin-top: 2px;
+}
+
+.pg-sum-badges .tm-pill {
+  height: 20px;
+  padding: 0 6px;
+  font-size: 11.5px;
+}
+
+/* ---------------------------------------------------------------- 说明 */
+
+.pg-sum-foot {
+  margin: 0;
+  padding: 0 2px;
+}

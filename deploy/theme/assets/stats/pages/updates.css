@@ -1,0 +1,38 @@
+/* 软件更新（pages/updates.js）专用样式。只用 stats.css 的设计变量，亮暗自动适配。 */
+
+.pg-updates-ver {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  min-width: 0;
+}
+
+.pg-updates-ver a,
+.tm-table td .pg-updates-ver a {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--tm-accent);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+}
+
+.pg-updates-ver a:hover {
+  text-decoration: underline;
+}
+
+.pg-updates-ext {
+  width: 13px;
+  height: 13px;
+  opacity: 0.7;
+}
+
+/* 版本号后面那串提交哈希，小一号、浅一点 */
+.pg-updates-hash {
+  color: var(--tm-text-hint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  font-weight: 400;
+}

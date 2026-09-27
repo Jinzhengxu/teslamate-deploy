@@ -1,0 +1,61 @@
+/* 地点（pages/locations.js）专用样式。只用 stats.css 的设计变量，亮暗自动适配。 */
+
+/* 右栏（省份 + 收藏点）自己竖排，和左栏的城市排行顶端对齐 */
+.pg-loc-col {
+  gap: 16px;
+  align-content: start;
+}
+
+/* ---------------------------------------------------------------- 搜索 */
+
+.pg-loc-search {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pg-loc-search .tm-search {
+  flex: 1 1 auto;
+}
+
+.pg-loc-search .tm-btn {
+  flex: none;
+}
+
+.pg-loc-filter {
+  margin-top: -6px;
+}
+
+.pg-loc-filter a {
+  color: var(--tm-accent);
+  font-weight: 500;
+}
+
+/* ---------------------------------------------------------------- 列表 */
+
+/* 地址行里的小链接（相关行程 / 设为收藏点）：行本身不能点，链接要一眼看得出来 */
+.pg-loc-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  color: var(--tm-accent);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.pg-loc-link:hover {
+  text-decoration: underline;
+}
+
+/* 收藏点标签可以点（去编辑收藏点） */
+.pg-loc-fence {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  text-decoration: none;
+}
+
+.pg-loc-fence:hover .tm-pill {
+  text-decoration: underline;
+}

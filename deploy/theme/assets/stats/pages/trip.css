@@ -1,0 +1,132 @@
+/* 旅程（pages/trip.js）专用样式。只用 stats.css 的设计变量，亮暗自动适配。 */
+
+/* ---------------------------------------------------------------- 顶部：地图 + 统计
+   手机、平板：地图在上、统计在下。桌面：地图在左、统计两列在右（和 Grafana 面板的布局一样） */
+
+.pg-trip-top {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+@media screen and (min-width: 1024px) {
+  .pg-trip-top {
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 400px);
+    align-items: stretch;
+  }
+
+  /* 地图卡片跟右边的统计一样高 */
+  .pg-trip-mapcard {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .pg-trip-mapcard .tm-map-wrap {
+    flex: 1 1 auto;
+  }
+
+  .pg-trip-mapcard .tm-map {
+    height: 100%;
+    min-height: 380px;
+  }
+}
+
+.pg-trip-foot {
+  padding: 10px 16px 12px;
+  border-top: 1px solid var(--tm-line);
+}
+
+/* ---------------------------------------------------------------- 时间分配 */
+
+.pg-trip-alloc {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+  overflow: hidden;
+  border-radius: 7px;
+  background: var(--tm-surface-2);
+}
+
+.pg-trip-alloc span {
+  flex: none;
+  min-width: 3px;
+  height: 100%;
+}
+
+.pg-trip-alloc-legend {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  margin-top: 14px;
+}
+
+@media screen and (min-width: 769px) {
+  .pg-trip-alloc-legend {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* 一项两行：● 行驶 38% / 9小时6分。百分比紧跟在名字后面，宽屏上也不会被甩到格子最右边 */
+.pg-trip-alloc-legend div {
+  display: grid;
+  grid-template-columns: 10px auto minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: 8px;
+  min-width: 0;
+}
+
+.pg-trip-alloc-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  align-self: center;
+  /* 「停车等」是浅灰（和横条的底色同一系），暗色下几乎看不见，描一圈细边 */
+  box-shadow: inset 0 0 0 1px var(--tm-line-strong);
+}
+
+.pg-trip-alloc-legend span {
+  color: var(--tm-text-2);
+  font-size: 13px;
+}
+
+.pg-trip-alloc-legend b {
+  grid-column: 2 / -1;
+  color: var(--tm-text);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.pg-trip-alloc-legend em {
+  grid-row: 1;
+  grid-column: 3;
+  color: var(--tm-text-hint);
+  font-size: 12.5px;
+  font-style: normal;
+}
+
+.pg-trip-states {
+  display: grid;
+  gap: 6px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--tm-line);
+}
+
+.pg-trip-states[hidden] {
+  display: none;
+}
+
+/* ---------------------------------------------------------------- 图表没有数据时 */
+
+.pg-trip-nochart {
+  display: grid;
+  place-items: center;
+}
+
+/* ---------------------------------------------------------------- 列表
+   行程、充电两列长短差很多（几十次行程、一两次充电），不跟核心的「并排小节等高」：
+   不然「这段时间没有充电」的空卡片会被拉得和整列行程一样高 */
+
+.pg-trip-lists {
+  align-items: start;
+}

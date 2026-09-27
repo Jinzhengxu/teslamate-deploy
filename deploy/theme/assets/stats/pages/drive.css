@@ -1,0 +1,153 @@
+/* 行程详情（pages/drive.js）专用样式。只用 stats.css 的设计变量，亮暗自动适配。 */
+
+/* ---------------------------------------------------------------- 布局
+   手机、平板：一列（地图在最上面）。
+   桌面：地图在左边并且吸顶，右边往下翻数字和曲线 —— 手指 / 鼠标在曲线上移动时，地图上的点跟着动，一直看得见 */
+
+.pg-drive-layout,
+.pg-drive-main,
+.pg-drive-charts {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  align-content: start;
+}
+
+.pg-drive-mapcol {
+  min-width: 0;
+}
+
+/* 地图高度走核心的变量（height: min(--tm-map-h, --tm-map-max)），不直接改 height，全屏和限高照常生效 */
+.pg-drive-mapcol .tm-map {
+  --tm-map-h: 360px;
+}
+
+@media screen and (min-width: 1024px) {
+  .pg-drive-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 20px;
+  }
+
+  .pg-drive-mapcol {
+    position: sticky;
+    top: 76px;
+  }
+
+  /* 公共样式把内嵌地图限制在视口的 45%（手机上要留地方滚动）；桌面上地图是固定在旁边的，可以高一些 */
+  .pg-drive-mapcol .tm-map {
+    --tm-map-h: 640px;
+    --tm-map-max: calc(100vh - 100px);
+  }
+}
+
+/* ---------------------------------------------------------------- 地图 + 路线 */
+
+.pg-drive-route {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 12px 16px 14px;
+  list-style: none;
+}
+
+.pg-drive-stop {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+  padding: 6px 0;
+}
+
+/* 起点和终点之间的竖线 */
+.pg-drive-stop.is-start::after {
+  content: "";
+  position: absolute;
+  top: 22px;
+  bottom: -8px;
+  left: 5px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--tm-line-strong);
+}
+
+.pg-drive-dot {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  margin-top: 5px;
+  border: 3px solid var(--tm-green);
+  border-radius: 50%;
+  background: var(--tm-surface);
+}
+
+.pg-drive-stop.is-end .pg-drive-dot {
+  border-color: var(--tm-red);
+}
+
+/* 没结束的行程没有终点：正在开是蓝色（和地图上的当前位置点一样），中途断掉是琥珀色虚线圈（和「未完成」标签一样；
+   虚线用 2px，3px 在 12px 的小圆上断成几块看不出是圈） */
+.pg-drive-stop.is-live .pg-drive-dot {
+  border-color: var(--tm-accent);
+}
+
+.pg-drive-stop.is-open .pg-drive-dot {
+  border: 2px dashed var(--tm-amber);
+}
+
+.pg-drive-stop-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pg-drive-stop-name {
+  color: var(--tm-text);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.pg-drive-stop-full {
+  color: var(--tm-text-hint);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.pg-drive-stop time {
+  flex: none;
+  padding-top: 1px;
+  color: var(--tm-text-2);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pg-drive-fence {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 2px;
+  color: var(--tm-accent);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.pg-drive-fence .tm-svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ---------------------------------------------------------------- 详细数据 */
+
+.pg-drive-kv-note {
+  margin: 12px 0 0;
+}
+
+/* ---------------------------------------------------------------- 底部：导出 GPX（上面是核心的上一次 / 下一次） */
+
+.pg-drive-foot {
+  display: flex;
+  justify-content: center;
+}

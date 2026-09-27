@@ -1,0 +1,15 @@
+/* 驾驶统计（pages/drive-stats.js）专用样式。颜色只用设计变量，亮暗自动适配 */
+
+/* 桌面两栏：左边上下两张图（里程走势、速度分布），右边排行榜占两行高。
+   只有排行榜是第 3 个小节（走势图画出来了）时才跨两行；单日范围没有走势图，两个小节并排 */
+@media screen and (min-width: 1024px) {
+  .pg-ds-grid > #pg-ds-top:nth-child(3) {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+}
+
+.pg-ds-note {
+  margin-top: 8px;
+}
+

@@ -1,0 +1,3492 @@
+/*
+ * 原生统计页（/stats/）的全部公共样式。页面自己的样式放 pages/<页面>.css（模块里 export const css = true）。
+ *
+ * 约定和 ../theme.css 一样：
+ *   - 设计变量（颜色、圆角、字体）与 theme.css 同值 —— 改了那边记得同步这里，反过来也一样，
+ *     这样统计页和换肤后的 TeslaMate 看起来是同一个产品；
+ *   - 断点：手机 ≤768px，平板 769–1023px，桌面 ≥1024px（导航在这里切换成顶栏）；
+ *   - 亮 / 暗两套配色挂在 <html data-theme>；
+ *   - 不加载任何外部资源。
+ * 类名一律 tm- 开头。
+ */
+
+/* ------------------------------------------------------------------ 设计变量（与 theme.css 同步） */
+
+:root {
+  --tm-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "Noto Sans CJK SC", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --tm-font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", Roboto, sans-serif;
+  --tm-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  --tm-r-xl: 22px;
+  --tm-r-lg: 18px;
+  --tm-r-md: 14px;
+  --tm-r-sm: 10px;
+
+  --tm-tabbar-h: 58px;
+  --tm-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  --tm-bg: #f2f3f5;
+  --tm-surface: #ffffff;
+  --tm-surface-2: #f4f5f7;
+  --tm-surface-3: #e9ebef;
+  --tm-line: rgba(17, 24, 39, 0.08);
+  --tm-line-strong: rgba(17, 24, 39, 0.14);
+  --tm-text: #111318;
+  --tm-text-2: #5c6270;
+  --tm-text-3: #8e939d; /* 只用于装饰（分隔符、描边），不用于要读的字 */
+  --tm-text-hint: #676d7a; /* 次要但要能读的字 */
+  --tm-accent: #3059c9;
+  --tm-accent-hover: #2a4fb5;
+  --tm-accent-soft: rgba(48, 89, 201, 0.11);
+  --tm-green: #17a34a;
+  --tm-green-soft: rgba(23, 163, 74, 0.14);
+  --tm-green-text: #15803d;
+  --tm-amber: #d97706;
+  --tm-amber-text: #b45309;
+  --tm-amber-soft: rgba(217, 119, 6, 0.12);
+  --tm-red: #b91c1c;
+  --tm-red-soft: rgba(185, 28, 28, 0.09);
+  --tm-on-fill: #fff;
+  --tm-accent-fill: #3059c9;
+  --tm-accent-fill-hover: #2a4fb5;
+  --tm-green-fill: #15803d;
+  --tm-amber-fill: #b45309;
+  --tm-red-fill: #b91c1c;
+  --tm-track: rgba(17, 24, 39, 0.08);
+  --tm-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 6px 20px rgba(16, 24, 40, 0.06);
+  --tm-shadow-pop: 0 12px 40px rgba(16, 24, 40, 0.16), 0 2px 6px rgba(16, 24, 40, 0.06);
+  --tm-glass: rgba(242, 243, 245, 0.82);
+  --tm-glass-strong: rgba(255, 255, 255, 0.9);
+  --tm-tooltip-bg: #1d2027;
+  --tm-tooltip-fg: #f5f6f8;
+  --tm-chrome: #f2f3f5;
+
+  /* 以下是统计页自己的变量（theme.css 里没有） */
+  /* 图表分类色：顺序固定（蓝、橙、紫、绿、青、红），相邻两色在色盲模拟下也能区分；
+     亮 / 暗各一套，都用 dataviz 的校验脚本验过（亮色对 #fff、暗色对 #16181c） */
+  --tm-c1: #3059c9;
+  --tm-c2: #d97706;
+  --tm-c3: #8b5cf6;
+  --tm-c4: #17a34a;
+  --tm-c5: #0891b2;
+  --tm-c6: #dc2626;
+  --tm-violet: #7c3aed;
+  --tm-violet-soft: rgba(124, 58, 237, 0.11);
+  --tm-cyan: #0e7490;
+  --tm-cyan-soft: rgba(8, 145, 178, 0.12);
+  /* 绿、琥珀色标签（ui.pill）的字：12px 的小字压在浅绿 / 浅黄底上，-text 那一档只有 4.3～4.4:1，再深一档才过 4.5:1。
+     暗色下 -text 本来就在 5:1 以上，照用 */
+  --tm-green-pill: #166534;
+  --tm-amber-pill: #92400e;
+  --tm-skeleton: rgba(17, 24, 39, 0.06);
+  --tm-skeleton-hi: rgba(17, 24, 39, 0.02);
+  /* 页面左右留白：和 TeslaMate 的 main.section 一致 */
+  --tm-gutter: 24px;
+  /* 和 TeslaMate 的 Bulma .container 同宽：在 TeslaMate 页面和统计页之间切换时，顶栏的 logo、导航不会左右跳 */
+  --tm-max: 960px;
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  --tm-bg: #0b0c0e;
+  --tm-surface: #16181c;
+  --tm-surface-2: #1e2126;
+  --tm-surface-3: #272b31;
+  --tm-line: rgba(255, 255, 255, 0.07);
+  --tm-line-strong: rgba(255, 255, 255, 0.13);
+  --tm-text: #f2f3f5;
+  --tm-text-2: #a2a8b4;
+  --tm-text-3: #6d7380;
+  --tm-text-hint: #8b919d;
+  --tm-accent: #6f8fff;
+  --tm-accent-hover: #86a1ff;
+  --tm-accent-soft: rgba(111, 143, 255, 0.16);
+  --tm-green: #3ddc84;
+  --tm-green-soft: rgba(61, 220, 132, 0.16);
+  --tm-green-text: #3ddc84;
+  --tm-amber: #fbbf24;
+  --tm-amber-text: #fbbf24;
+  --tm-amber-soft: rgba(251, 191, 36, 0.15);
+  --tm-red: #ff6b6b;
+  --tm-red-soft: rgba(255, 107, 107, 0.14);
+  --tm-accent-fill: #3d5fd9;
+  --tm-accent-fill-hover: #3656cc;
+  --tm-green-fill: #15803d;
+  --tm-amber-fill: #b45309;
+  --tm-red-fill: #c53030;
+  --tm-track: rgba(255, 255, 255, 0.09);
+  --tm-shadow: 0 0 0 1px rgba(255, 255, 255, 0.02);
+  --tm-shadow-pop: 0 16px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --tm-glass: rgba(11, 12, 14, 0.78);
+  --tm-glass-strong: rgba(30, 33, 38, 0.92);
+  --tm-tooltip-bg: #2b2f36;
+  --tm-tooltip-fg: #f2f3f5;
+  --tm-chrome: #0b0c0e;
+
+  --tm-c1: #6585ff;
+  --tm-c2: #c4820e;
+  --tm-c3: #9474ee;
+  --tm-c4: #2ea85c;
+  --tm-c5: #1d9ccc;
+  --tm-c6: #e45a5a;
+  --tm-violet: #a78bfa;
+  --tm-violet-soft: rgba(167, 139, 250, 0.16);
+  --tm-cyan: #22d3ee;
+  --tm-cyan-soft: rgba(34, 211, 238, 0.14);
+  --tm-green-pill: var(--tm-green-text);
+  --tm-amber-pill: var(--tm-amber-text);
+  --tm-skeleton: rgba(255, 255, 255, 0.06);
+  --tm-skeleton-hi: rgba(255, 255, 255, 0.02);
+  color-scheme: dark;
+}
+
+@media screen and (max-width: 768px) {
+  :root {
+    --tm-gutter: 16px;
+  }
+}
+
+/* ------------------------------------------------------------------ 基础 */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background-color: var(--tm-bg);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background-color: var(--tm-bg);
+  color: var(--tm-text-2);
+  font-family: var(--tm-font);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+  /* 宽表格、长地址都在自己的容器里处理溢出，整页永远不横向滚动 */
+  overflow-x: hidden;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--tm-accent);
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+h1,
+h2,
+h3,
+p,
+dl,
+dd,
+ul,
+ol,
+figure {
+  margin: 0;
+}
+
+ul,
+ol {
+  padding: 0;
+  list-style: none;
+}
+
+strong {
+  color: var(--tm-text);
+  font-weight: 600;
+}
+
+::selection {
+  background: var(--tm-accent-soft);
+}
+
+:focus-visible {
+  outline: 2px solid var(--tm-accent);
+  outline-offset: 2px;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.tm-svg {
+  display: inline-block;
+  flex: none;
+  width: 1em;
+  height: 1em;
+  fill: currentColor;
+  vertical-align: -0.125em;
+}
+
+.tm-sr {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ------------------------------------------------------------------ 顶栏（同 theme.css 的 .navbar） */
+
+.tm-top {
+  position: sticky;
+  top: 0;
+  z-index: 400;
+  padding-top: env(safe-area-inset-top);
+  border-bottom: 1px solid var(--tm-line);
+  color: var(--tm-text);
+}
+
+/* 毛玻璃放在伪元素上：backdrop-filter 会让 fixed 定位的子元素改为相对它定位 */
+.tm-top::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--tm-glass);
+  -webkit-backdrop-filter: saturate(1.8) blur(18px);
+  backdrop-filter: saturate(1.8) blur(18px);
+}
+
+.tm-top-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: calc(var(--tm-max) + 2 * var(--tm-gutter));
+  min-height: 56px;
+  margin: 0 auto;
+  padding: 0 var(--tm-gutter);
+}
+
+.tm-brand {
+  display: flex;
+  align-items: center;
+  height: 56px;
+}
+
+.tm-brand img {
+  display: block;
+  width: 104px;
+  height: auto;
+}
+
+/* logo 本身是白字，亮色主题下压成近黑色（同 theme.css） */
+html:not([data-theme="dark"]) .tm-brand img {
+  filter: brightness(0);
+  opacity: 0.88;
+}
+
+.tm-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tm-nav a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 14px 0 10px;
+  border-radius: 999px;
+  color: var(--tm-text-2);
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.tm-nav a .tm-svg {
+  width: 20px;
+  height: 20px;
+}
+
+.tm-nav a:hover {
+  background: var(--tm-surface-3);
+  color: var(--tm-text);
+}
+
+.tm-nav a[aria-current="page"] {
+  background: var(--tm-accent-soft);
+  color: var(--tm-accent);
+}
+
+/* 桌面端 logo 就回首页，「主页」标签只在手机底栏用 */
+.tm-nav .tm-nav-home {
+  display: none;
+}
+
+/* TeslaMate 的导航（Bulma）右边伸出容器 12px，这里跟着伸出，两边切换时按钮位置不动 */
+@media screen and (min-width: 1024px) {
+  .tm-nav {
+    margin-right: -12px;
+  }
+}
+
+/* ------------------------------------------------------------------ 手机 / 平板：底部标签栏（同 theme.css） */
+
+@media screen and (max-width: 1023px) {
+  .tm-top {
+    position: relative;
+  }
+
+  .tm-top-inner {
+    min-height: 52px;
+  }
+
+  .tm-brand {
+    height: 52px;
+  }
+
+  body {
+    padding-bottom: calc(var(--tm-tabbar-h) + env(safe-area-inset-bottom));
+  }
+
+  .tm-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 401;
+    display: block;
+    padding: 0 max(8px, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(8px, env(safe-area-inset-left));
+    border-top: 1px solid var(--tm-line);
+  }
+
+  .tm-nav::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: var(--tm-glass);
+    -webkit-backdrop-filter: saturate(1.8) blur(20px);
+    backdrop-filter: saturate(1.8) blur(20px);
+  }
+
+  .tm-nav-items {
+    display: flex;
+    align-items: stretch;
+    justify-content: space-around;
+    max-width: 560px;
+    height: var(--tm-tabbar-h);
+    margin: 0 auto;
+  }
+
+  .tm-nav a,
+  .tm-nav .tm-nav-home {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-width: 0;
+    height: 100%;
+    padding: 6px 2px 4px;
+    border-radius: 0;
+    background: transparent !important;
+    color: var(--tm-text-hint);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    line-height: 1.2;
+    transition: color 0.15s;
+  }
+
+  .tm-nav a .tm-svg {
+    width: 23px;
+    height: 23px;
+    margin: 1.5px 0;
+    transition: transform 0.12s var(--tm-ease);
+  }
+
+  .tm-nav a span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tm-nav a:hover {
+    color: var(--tm-text-2);
+  }
+
+  .tm-nav a[aria-current="page"] {
+    color: var(--tm-accent-hover);
+  }
+
+  .tm-nav a:active .tm-svg {
+    transform: scale(0.9);
+  }
+}
+
+@media screen and (min-width: 1024px) {
+  .tm-nav-items {
+    display: contents;
+  }
+}
+
+/* 页面切换时顶部的细进度条（同 theme.css #tm-progress） */
+#tm-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2000;
+  width: 0;
+  height: 2px;
+  background: var(--tm-accent);
+  box-shadow: 0 0 8px var(--tm-accent);
+  opacity: 0;
+  pointer-events: none;
+  transition: width 0.4s var(--tm-ease), opacity 0.3s;
+}
+
+#tm-progress.is-active {
+  width: 72%;
+  opacity: 1;
+  transition: width 6s cubic-bezier(0.1, 0.6, 0.2, 1), opacity 0.1s;
+}
+
+#tm-progress.is-done {
+  width: 100%;
+  opacity: 0;
+  transition: width 0.2s ease, opacity 0.35s 0.15s;
+}
+
+/* ------------------------------------------------------------------ 内容区 + 页头 */
+
+.tm-main {
+  max-width: calc(var(--tm-max) + 2 * var(--tm-gutter));
+  margin: 0 auto;
+  padding: 28px var(--tm-gutter) 40px;
+}
+
+@media screen and (max-width: 768px) {
+  .tm-main {
+    padding-top: 14px;
+    padding-bottom: 28px;
+  }
+}
+
+.tm-head {
+  margin-bottom: 18px;
+}
+
+/* 上级页面：iOS 那种蓝色返回链接（同 theme.css 的面包屑） */
+.tm-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 28px;
+  margin-left: -6px;
+  padding: 0 8px 0 2px;
+  border-radius: 8px;
+  color: var(--tm-accent);
+  font-size: 14.5px;
+  font-weight: 500;
+}
+
+.tm-back .tm-svg {
+  width: 22px;
+  height: 22px;
+}
+
+.tm-back:hover {
+  color: var(--tm-accent-hover);
+}
+
+.tm-head-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* 加载中还没有「⋯」按钮：先放一个看不见的同样大小的，标题这一行不会在按钮出现时变高、把下面往下挤 */
+.tm-icon-btn.is-placeholder {
+  visibility: hidden;
+}
+
+/* 换页后外壳把焦点放到标题上（tabindex=-1，给读屏念新页面用），标题不是能点的东西，不画焦点框 */
+.tm-title:focus {
+  outline: none;
+}
+
+.tm-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--tm-text);
+  font-family: var(--tm-font-display);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 多辆车时标题下面的车名，点开切换 */
+.tm-car-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 30px;
+  margin: 4px 0 0 -8px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--tm-text-2);
+  font-size: 14.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.tm-car-btn span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-car-btn .tm-svg {
+  width: 18px;
+  height: 18px;
+  color: var(--tm-text-hint);
+}
+
+.tm-car-btn:hover,
+.tm-car-btn[aria-expanded="true"] {
+  background: var(--tm-surface-3);
+  color: var(--tm-text);
+}
+
+@media screen and (max-width: 768px) {
+  .tm-title {
+    font-size: 28px;
+  }
+}
+
+.tm-icon-btn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid var(--tm-line);
+  border-radius: 999px;
+  background: var(--tm-surface);
+  color: var(--tm-text);
+  cursor: pointer;
+  transition: background-color 0.15s, transform 0.1s;
+}
+
+.tm-icon-btn .tm-svg {
+  width: 22px;
+  height: 22px;
+}
+
+.tm-icon-btn:hover,
+.tm-icon-btn[aria-expanded="true"] {
+  background: var(--tm-surface-3);
+}
+
+.tm-icon-btn:active {
+  transform: scale(0.94);
+}
+
+/* ------------------------------------------------------------------ 范围选择器 */
+
+.tm-rangebar {
+  display: flex;
+  align-items: stretch;
+  width: fit-content;
+  max-width: 100%;
+  height: 38px;
+  margin-top: 14px;
+  border: 1px solid var(--tm-line);
+  border-radius: 12px;
+  background: var(--tm-surface);
+  box-shadow: var(--tm-shadow);
+}
+
+.tm-rangebar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--tm-text);
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.tm-rangebar button:hover:not(:disabled) {
+  background: var(--tm-surface-2);
+}
+
+.tm-rangebar button:disabled {
+  color: var(--tm-text-3);
+  opacity: 0.5;
+  cursor: default;
+}
+
+.tm-rb-step {
+  flex: none;
+  width: 40px;
+}
+
+.tm-rb-step:first-child {
+  border-radius: 11px 0 0 11px !important;
+}
+
+.tm-rb-step:last-child {
+  border-radius: 0 11px 11px 0 !important;
+}
+
+.tm-rb-step .tm-svg {
+  width: 22px;
+  height: 22px;
+}
+
+.tm-rb-label {
+  flex: 1 1 auto;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 12px !important;
+  border-inline: 1px solid var(--tm-line) !important;
+  font-size: 14.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tm-rb-label .tm-svg {
+  width: 18px;
+  height: 18px;
+  color: var(--tm-text-hint);
+}
+
+.tm-rb-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tm-rb-span {
+  overflow: hidden;
+  color: var(--tm-text-hint);
+  font-weight: 500;
+  font-size: 13px;
+  text-overflow: ellipsis;
+}
+
+@media screen and (max-width: 768px) {
+  .tm-rangebar {
+    display: flex;
+    width: 100%;
+  }
+
+  .tm-rb-label {
+    justify-content: flex-start !important;
+  }
+
+  .tm-rb-span {
+    margin-left: auto;
+  }
+}
+
+@media screen and (max-width: 359px) {
+  .tm-rb-span {
+    display: none;
+  }
+
+  /* 日历图标（连同 8px 间距）让给文字：跨年的自定义段「2025/12/15 – 2026/1/15」在 320 宽要 165px */
+  .tm-rb-label .tm-svg {
+    display: none;
+  }
+}
+
+.tm-car-btn + .tm-rangebar {
+  margin-top: 8px;
+}
+
+/* 范围选择面板的内容 */
+.tm-rp {
+  display: grid;
+  gap: 16px;
+}
+
+.tm-rp-group h3 {
+  margin: 0 0 8px;
+  color: var(--tm-text-hint);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.tm-rp-chips {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.tm-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  /* 面板是半透明毛玻璃，用半透明的底色才在亮暗两种面板上都看得出来 */
+  background: var(--tm-track);
+  color: var(--tm-text);
+  font-size: 14.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.tm-chip:hover {
+  background: var(--tm-line-strong);
+}
+
+.tm-chip[aria-pressed="true"] {
+  border-color: transparent;
+  background: var(--tm-accent-soft);
+  color: var(--tm-accent);
+  font-weight: 600;
+}
+
+.tm-rp-custom {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.tm-rp-custom label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: var(--tm-text-hint);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.tm-rp-custom .tm-btn {
+  grid-column: 1 / -1;
+}
+
+.tm-input {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--tm-line-strong);
+  border-radius: 10px;
+  background: var(--tm-surface);
+  color: var(--tm-text);
+  /* 不能小于 16px：iOS Safari 遇到更小的输入框，一点就自动放大页面 */
+  font-size: 16px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.tm-input:focus {
+  border-color: var(--tm-accent);
+  box-shadow: 0 0 0 3px var(--tm-accent-soft);
+  outline: none;
+}
+
+.tm-input::-webkit-date-and-time-value {
+  text-align: left;
+}
+
+/* ------------------------------------------------------------------ 弹出面板（桌面浮层 / 手机底部面板） */
+
+.tm-pop {
+  position: fixed;
+  z-index: 1500;
+  width: max-content;
+  min-width: 220px;
+  max-width: min(360px, calc(100vw - 20px));
+  max-height: min(70vh, 560px);
+  padding: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--tm-line);
+  border-radius: var(--tm-r-md);
+  background: var(--tm-glass-strong);
+  -webkit-backdrop-filter: saturate(1.8) blur(20px);
+  backdrop-filter: saturate(1.8) blur(20px);
+  box-shadow: var(--tm-shadow-pop);
+  color: var(--tm-text);
+  animation: tm-pop-in 0.16s var(--tm-ease);
+}
+
+.tm-pop.is-wide {
+  width: 340px;
+  padding: 14px;
+}
+
+.tm-pop-title {
+  display: none;
+}
+
+.tm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1490;
+  background: transparent;
+}
+
+@media screen and (max-width: 768px) {
+  /* 手机上从底部弹出，盖住底栏（同 theme.css 的「控制台」面板） */
+  .tm-pop,
+  .tm-pop.is-wide {
+    left: max(10px, env(safe-area-inset-left)) !important;
+    right: max(10px, env(safe-area-inset-right)) !important;
+    top: auto !important;
+    bottom: calc(env(safe-area-inset-bottom) + 10px) !important;
+    width: auto;
+    max-width: 540px;
+    max-height: min(78vh, 620px);
+    margin: 0 auto;
+    padding: 8px 12px 12px;
+    border-radius: var(--tm-r-lg);
+    animation: tm-sheet-in 0.22s var(--tm-ease);
+  }
+
+  .tm-pop-title {
+    display: block;
+    padding: 8px 4px 10px;
+    color: var(--tm-text);
+    font-size: 16px;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  .tm-backdrop {
+    z-index: 1490;
+    background: rgba(0, 0, 0, 0.32);
+    animation: tm-fade-in 0.2s ease;
+  }
+}
+
+@keyframes tm-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+
+@keyframes tm-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+}
+
+@keyframes tm-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* 菜单（⋯ 菜单、车辆切换） */
+.tm-menu {
+  display: grid;
+  gap: 2px;
+}
+
+.tm-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: var(--tm-r-sm);
+  background: transparent;
+  color: var(--tm-text);
+  font-size: 14.5px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tm-menu-item:hover {
+  background: var(--tm-surface-3);
+  color: var(--tm-text);
+}
+
+.tm-menu-item .tm-svg {
+  width: 20px;
+  height: 20px;
+  color: var(--tm-text-2);
+}
+
+.tm-menu-item .tm-menu-check {
+  margin-left: auto;
+  color: var(--tm-accent);
+}
+
+.tm-menu-label {
+  padding: 8px 12px 4px;
+  color: var(--tm-text-hint);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.tm-menu-sep {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--tm-line);
+}
+
+@media screen and (max-width: 768px) {
+  .tm-menu-item {
+    min-height: 48px;
+    font-size: 15.5px;
+  }
+}
+
+/* ------------------------------------------------------------------ 按钮 */
+
+.tm-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: var(--tm-surface-2);
+  color: var(--tm-text);
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s, transform 0.1s;
+}
+
+.tm-btn:hover {
+  background: var(--tm-surface-3);
+  color: var(--tm-text);
+}
+
+.tm-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.tm-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.tm-btn .tm-svg {
+  width: 18px;
+  height: 18px;
+}
+
+.tm-btn.is-primary {
+  background: var(--tm-accent-fill);
+  color: var(--tm-on-fill);
+}
+
+.tm-btn.is-primary:hover {
+  background: var(--tm-accent-fill-hover);
+}
+
+.tm-btn.is-soft {
+  background: var(--tm-accent-soft);
+  color: var(--tm-accent);
+}
+
+.tm-btn.is-text {
+  background: transparent;
+  color: var(--tm-accent);
+}
+
+.tm-btn.is-text:hover {
+  background: var(--tm-accent-soft);
+}
+
+.tm-btn.is-small {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 13.5px;
+}
+
+/* ------------------------------------------------------------------ 分组、卡片 */
+
+.tm-page {
+  display: grid;
+  gap: 16px;
+  /* 重画时路由会临时给它 min-height（保住滚动位置），行不能被拉高 */
+  align-content: start;
+  min-width: 0;
+}
+
+.tm-page > * {
+  min-width: 0;
+}
+
+.tm-section {
+  display: grid;
+  gap: 10px;
+  /* 被拉高时（放在 .tm-grid-2 里和旁边一样高）多出的高度留在底下，不分给标题行和说明行 */
+  align-content: start;
+  min-width: 0;
+}
+
+/* 子元素默认 min-width: auto，宽表格外面套一层普通 div 时会把整页撑宽 */
+.tm-section > * {
+  min-width: 0;
+}
+
+/* 小节之间比页面里其它块多空一点（16 + 12 = 28px），一眼看出哪儿是新的一节 */
+.tm-page > .tm-section + .tm-section {
+  margin-top: 12px;
+}
+
+/* 并排的小节（.tm-grid-2 / .tm-grid-3 里直接放 section）：
+   桌面上两边一样高 —— section 改成竖排弹性盒，最后一张卡片撑满剩下的高度，标题、说明照常靠上；
+   手机上叠成一栏时，小节之间、和前后相邻的小节之间都是 28px，和普通小节一致 */
+.tm-grid-2 > .tm-section,
+.tm-grid-3 > .tm-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.tm-grid-2 > .tm-section > .tm-card:last-child,
+.tm-grid-3 > .tm-section > .tm-card:last-child {
+  flex: 1 1 auto;
+}
+
+/* :has() 单独成条：不认识它的旧浏览器只丢这几条（间距回到 16px），不连累上面的 */
+/* 只管直接放在页面里、「里面全是小节」的网格：混着放别的块（比如一栏里套了 .tm-stack）、
+   或者放在页面自己的容器里（有自己的间距规则）的保持原来的 16px，免得一页里间距忽大忽小 */
+.tm-page > :is(.tm-grid-2, .tm-grid-3):has(> .tm-section):not(:has(> :not(.tm-section))) {
+  row-gap: 28px;
+}
+
+.tm-page > .tm-section + :is(.tm-grid-2, .tm-grid-3):has(> .tm-section):not(:has(> :not(.tm-section))),
+.tm-page > :is(.tm-grid-2, .tm-grid-3):has(> .tm-section):not(:has(> :not(.tm-section))) + .tm-section,
+.tm-page
+  > :is(.tm-grid-2, .tm-grid-3):has(> .tm-section):not(:has(> :not(.tm-section)))
+  + :is(.tm-grid-2, .tm-grid-3):has(> .tm-section):not(:has(> :not(.tm-section))) {
+  margin-top: 12px;
+}
+
+.tm-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 0 2px;
+}
+
+.tm-section-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--tm-text);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-section-sub {
+  margin-top: -6px;
+  padding: 0 2px;
+  color: var(--tm-text-hint);
+  font-size: 13px;
+}
+
+.tm-section-action {
+  flex: none;
+  color: var(--tm-accent);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.tm-card {
+  display: block;
+  min-width: 0;
+  border: 1px solid var(--tm-line);
+  border-radius: var(--tm-r-lg);
+  background: var(--tm-surface);
+  box-shadow: var(--tm-shadow);
+  color: var(--tm-text-2);
+}
+
+.tm-card.is-pad {
+  padding: 16px;
+}
+
+@media screen and (min-width: 769px) {
+  .tm-card.is-pad {
+    padding: 20px;
+  }
+}
+
+a.tm-card {
+  transition: background-color 0.15s, transform 0.1s;
+}
+
+a.tm-card:hover {
+  background: var(--tm-surface-2);
+}
+
+a.tm-card:active {
+  transform: scale(0.99);
+}
+
+.tm-card-title {
+  margin-bottom: 10px;
+  color: var(--tm-text);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------ 统计数字宫格 */
+
+.tm-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media screen and (min-width: 640px) {
+  .tm-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .tm-stats.is-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tm-stats.is-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media screen and (min-width: 1024px) {
+  .tm-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .tm-stats.is-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.tm-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 13px 14px 14px;
+  border: 1px solid var(--tm-line);
+  border-radius: var(--tm-r-md);
+  background: var(--tm-surface);
+  box-shadow: var(--tm-shadow);
+}
+
+a.tm-stat:hover {
+  background: var(--tm-surface-2);
+}
+
+.tm-stat-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--tm-text-hint);
+  font-size: 13px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-stat-label .tm-svg {
+  width: 15px;
+  height: 15px;
+}
+
+.tm-stat-value {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  min-width: 0;
+  color: var(--tm-text);
+  font-family: var(--tm-font-display);
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.tm-stat-value > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tm-stat-unit {
+  flex: none;
+  color: var(--tm-text-2);
+  font-family: var(--tm-font);
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+/* 最多两行：320 宽、桌面窄栏里「慢充 ¥0.45 · 快充 ¥1.75」这类一行放不下，截断会丢掉后半截数据。
+   keep-all 让中文尽量在空格处折（「平均每次 / 3小时50分」不拆开），一段实在太长才任意处折 */
+.tm-stat-sub {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  color: var(--tm-text-hint);
+  font-size: 12.5px;
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+@media screen and (max-width: 374px) {
+  .tm-stat-value {
+    font-size: 21px;
+  }
+}
+
+/* 紧凑的宫格（ui.stats 的 dense）：列表页左栏的汇总在手机上收紧一点，一打开就能看到记录（390×844 首屏多露出一行） */
+@media screen and (max-width: 768px) {
+  .tm-stats.is-dense {
+    gap: 8px;
+  }
+
+  .tm-stats.is-dense .tm-stat {
+    padding: 9px 12px 10px;
+  }
+
+  .tm-stats.is-dense .tm-stat-value {
+    font-size: 20px;
+  }
+}
+
+/* 语气色：只用于数值文字，用各色的 -text 档（对比度够） */
+.tm-tone-accent {
+  color: var(--tm-accent) !important;
+}
+
+.tm-tone-green {
+  color: var(--tm-green-text) !important;
+}
+
+.tm-tone-amber {
+  color: var(--tm-amber-text) !important;
+}
+
+.tm-tone-red {
+  color: var(--tm-red) !important;
+}
+
+.tm-tone-violet {
+  color: var(--tm-violet) !important;
+}
+
+.tm-tone-cyan {
+  color: var(--tm-cyan) !important;
+}
+
+.tm-tone-muted {
+  color: var(--tm-text-hint) !important;
+}
+
+/* ------------------------------------------------------------------ 列表 */
+
+.tm-list {
+  overflow: hidden;
+}
+
+.tm-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 62px;
+  padding: 11px 16px;
+  color: var(--tm-text-2);
+}
+
+/* 分隔线从文字开始（iOS 列表的样子），不贯穿图标 */
+.tm-row + .tm-row::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: var(--tm-row-inset, 16px);
+  right: 0;
+  height: 1px;
+  background: var(--tm-line);
+}
+
+.tm-row.has-icon {
+  --tm-row-inset: 64px;
+}
+
+a.tm-row {
+  transition: background-color 0.12s;
+}
+
+a.tm-row:hover {
+  background: var(--tm-surface-2);
+}
+
+a.tm-row:active {
+  background: var(--tm-surface-3);
+}
+
+.tm-row-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: var(--tm-accent-soft);
+  color: var(--tm-accent);
+}
+
+.tm-row-icon .tm-svg {
+  width: 20px;
+  height: 20px;
+}
+
+.tm-row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 标题最多两行：「特斯拉超级充电站（淮安清江浦）」「山姆会员商店(济南高新店) → 家」这类名字能区分的部分在末尾，
+   单行省略会把它截没。titleLines: 1 的行（.is-1）还是单行省略 */
+.tm-row-title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  color: var(--tm-text);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.tm-row-title.is-1 {
+  display: block;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-row-sub,
+.tm-row-meta {
+  overflow: hidden;
+  color: var(--tm-text-hint);
+  font-size: 13px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin-top: 4px;
+  white-space: normal;
+}
+
+.tm-row-end {
+  flex: none;
+  max-width: 45%;
+  text-align: right;
+}
+
+.tm-row-value {
+  overflow: hidden;
+  color: var(--tm-text);
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-row-value-sub {
+  overflow: hidden;
+  color: var(--tm-text-hint);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-row-chevron {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-right: -6px;
+  color: var(--tm-text-3);
+}
+
+/* 一行放得下几项就显示几项，放不下的整项藏起来（ui.fit）：换行的弹性盒子限高一行、超出的隐藏。
+   只有第一项自己就比一行宽时才省略号截断。放在 .tm-row-meta（本身是换行的弹性盒子）里时占满一整行，
+   后面的标签（pill）排到下一行 */
+.tm-fit-line {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  column-gap: 10px;
+  min-width: 0;
+  max-height: 1.4em;
+  overflow: hidden;
+  line-height: 1.4;
+}
+
+.tm-fit-line > * {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* wrap：第一项可以折成两行，后面的项仍然只在第一行放得下时才显示。不能再靠限高一行藏：
+   后面的项高度设成 0（字照样画出来），行高只由第一项撑，整个盒子正好是第一项的高度；
+   挤到下一行的项画在盒子外面，被 overflow 裁掉 */
+.tm-fit-line.is-wrap {
+  max-height: none;
+  row-gap: 0;
+}
+
+.tm-fit-line.is-wrap > :first-child {
+  white-space: normal;
+}
+
+.tm-fit-line.is-wrap > * + * {
+  height: 0;
+  overflow: visible;
+}
+
+.tm-fit-line.is-sep {
+  column-gap: 0;
+}
+
+.tm-fit-line.is-sep > * + *::before {
+  content: " · ";
+  white-space: pre;
+}
+
+/* 分段文字（ui.segs）：按段折行，段间「 · 」，折到下一行的行首不带「·」。
+   每段前面的「·」画在段左边的间隙里；行首那一段的「·」落在盒子外面，被 overflow 裁掉 */
+.tm-segs {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 1em;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.tm-segs > * {
+  position: relative;
+  max-width: 100%;
+  overflow: visible;
+  white-space: nowrap;
+}
+
+.tm-segs > *::before {
+  content: "·";
+  position: absolute;
+  top: 0;
+  left: -1em;
+  width: 1em;
+  text-align: center;
+}
+
+/* 点一下展开的行（item.expand）：行本身是按钮，下面接一个明细面板 */
+.tm-row.is-expand {
+  cursor: pointer;
+  transition: background-color 0.12s;
+}
+
+.tm-row.is-expand:hover,
+.tm-row.is-expand[aria-expanded="true"] {
+  background: var(--tm-surface-2);
+}
+
+/* 列表外框裁掉了溢出，焦点框画在里面 */
+.tm-row.is-expand:focus-visible {
+  outline: 2px solid var(--tm-accent);
+  outline-offset: -2px;
+}
+
+.tm-row-expand-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-right: -6px;
+  color: var(--tm-text-3);
+  transition: transform 0.18s var(--tm-ease);
+}
+
+.tm-row.is-expand[aria-expanded="true"] .tm-row-expand-icon {
+  transform: rotate(180deg);
+}
+
+/* 明细面板左边和行文字对齐（有图标的行缩进 64px） */
+.tm-row-panel {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 2px 16px 14px var(--tm-row-inset, 16px);
+  background: var(--tm-surface-2);
+}
+
+.tm-row.has-icon + .tm-row-panel {
+  --tm-row-inset: 64px;
+}
+
+/* 面板（展开或收起）后面的下一行照样有分隔线 */
+.tm-row-panel + .tm-row::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: var(--tm-row-inset, 16px);
+  right: 0;
+  height: 1px;
+  background: var(--tm-line);
+}
+
+@media screen and (max-width: 420px) {
+  .tm-row.has-icon + .tm-row-panel {
+    --tm-row-inset: 16px;
+  }
+}
+
+/* 320 宽的小屏：一行里图标 36、右边数值约 67、「›」约 30，留给文字的只有 127px 左右。
+   「›」去掉（整行照样能点），图标缩到 28px，把地方让给时间、时长这些字 */
+@media screen and (max-width: 359px) {
+  .tm-row-chevron {
+    display: none;
+  }
+
+  .tm-row-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 9px;
+  }
+
+  .tm-row-icon .tm-svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .tm-row.has-icon {
+    --tm-row-inset: 56px;
+  }
+
+  .tm-row.has-icon + .tm-row-panel {
+    --tm-row-inset: 16px;
+  }
+}
+
+/* 图标底色的语气 */
+.tm-row-icon.is-green,
+.tm-entry-icon.is-green {
+  background: var(--tm-green-soft);
+  color: var(--tm-green-text);
+}
+
+.tm-row-icon.is-amber,
+.tm-entry-icon.is-amber {
+  background: var(--tm-amber-soft);
+  color: var(--tm-amber-text);
+}
+
+.tm-row-icon.is-red,
+.tm-entry-icon.is-red {
+  background: var(--tm-red-soft);
+  color: var(--tm-red);
+}
+
+.tm-row-icon.is-violet,
+.tm-entry-icon.is-violet {
+  background: var(--tm-violet-soft);
+  color: var(--tm-violet);
+}
+
+.tm-row-icon.is-cyan,
+.tm-entry-icon.is-cyan {
+  background: var(--tm-cyan-soft);
+  color: var(--tm-cyan);
+}
+
+.tm-row-icon.is-muted,
+.tm-entry-icon.is-muted {
+  background: var(--tm-surface-2);
+  color: var(--tm-text-2);
+}
+
+.tm-list-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  border-top: 1px solid var(--tm-line);
+  color: var(--tm-accent);
+  font-size: 14.5px;
+  font-weight: 500;
+}
+
+/* ------------------------------------------------------------------ 表格（宽屏表格，手机上变卡片） */
+
+.tm-table-wrap {
+  overflow-x: auto;
+}
+
+/* 能横向滚动时（ui.js 按滚动位置标 is-scrollable / is-start / is-end），还能往哪边滚，那边的边缘就渐隐 */
+.tm-table-wrap.is-scrollable:not(.is-end) {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent);
+}
+
+.tm-table-wrap.is-scrollable:not(.is-start) {
+  -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to left, #000 calc(100% - 24px), transparent);
+}
+
+.tm-table-wrap.is-scrollable:not(.is-start):not(.is-end) {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 36px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 36px), transparent);
+}
+
+.tm-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--tm-text);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tm-table th,
+.tm-table td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--tm-line);
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.tm-table th {
+  position: sticky;
+  top: 0;
+  background: var(--tm-surface);
+  color: var(--tm-text-hint);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.tm-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.tm-table .is-right {
+  text-align: right;
+}
+
+.tm-table .is-center {
+  text-align: center;
+}
+
+.tm-table .is-wrap {
+  min-width: 160px;
+  white-space: normal;
+}
+
+.tm-table tr[data-href] {
+  cursor: pointer;
+}
+
+.tm-table tbody tr[data-href]:hover td {
+  background: var(--tm-surface-2);
+}
+
+.tm-table.is-dense th,
+.tm-table.is-dense td {
+  padding: 7px 12px;
+}
+
+.tm-table td a {
+  color: var(--tm-text);
+  font-weight: 600;
+}
+
+/* 手机：默认每行变成一块小卡片。mobile: "table" 的表（.is-mobile-table）不变卡片，见下面。
+   用 :where() 排除它，选择器的优先级和原来一样，页面里覆盖这些样式的写法照样生效 */
+@media screen and (max-width: 768px) {
+  .tm-table-wrap:where(:not(.is-mobile-table)) {
+    overflow: visible;
+  }
+
+  .tm-table:where(:not(.is-mobile-table)),
+  .tm-table:where(:not(.is-mobile-table)) tbody,
+  .tm-table:where(:not(.is-mobile-table)) tr,
+  .tm-table:where(:not(.is-mobile-table)) td {
+    display: block;
+  }
+
+  .tm-table:where(:not(.is-mobile-table)) thead {
+    display: none;
+  }
+
+  .tm-table:where(:not(.is-mobile-table)) tr {
+    position: relative;
+    padding: 12px 16px;
+  }
+
+  .tm-table:where(:not(.is-mobile-table)) tr + tr {
+    border-top: 1px solid var(--tm-line);
+  }
+
+  .tm-table:where(:not(.is-mobile-table)) td,
+  .tm-table.is-dense:where(:not(.is-mobile-table)) td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 3px 0;
+    border: 0;
+    text-align: right !important;
+    white-space: normal;
+  }
+
+  .tm-table:where(:not(.is-mobile-table)) td::before {
+    content: attr(data-label);
+    flex: none;
+    color: var(--tm-text-hint);
+    font-size: 13px;
+    text-align: left;
+  }
+
+  /* 第一列当作卡片标题 */
+  .tm-table:where(:not(.is-mobile-table)) td.is-primary {
+    display: block;
+    padding: 0 0 6px;
+    color: var(--tm-text);
+    font-size: 15px;
+    font-weight: 600;
+    text-align: left !important;
+  }
+
+  .tm-table:where(:not(.is-mobile-table)) td.is-primary::before {
+    display: none;
+  }
+
+  .tm-table:where(:not(.is-mobile-table)) td.is-mobile-hidden,
+  .tm-table:where(:not(.is-mobile-table)) td:empty {
+    display: none;
+  }
+
+  .tm-table tbody tr[data-href]:hover td {
+    background: transparent;
+  }
+
+  .tm-table tbody tr[data-href]:active {
+    background: var(--tm-surface-2);
+  }
+
+  /* 手机上也是表格：字小一号、格子收窄，放不下就在卡片里横着滚（右边缘渐隐提示）。列上 mobile: false 的隐藏 */
+  .tm-table.is-mobile-table {
+    font-size: 13px;
+  }
+
+  .tm-table.is-mobile-table th,
+  .tm-table.is-mobile-table td {
+    padding: 8px 8px;
+  }
+
+  .tm-table.is-mobile-table th {
+    font-size: 12px;
+  }
+
+  .tm-table.is-mobile-table th:first-child,
+  .tm-table.is-mobile-table td:first-child {
+    padding-left: 14px;
+  }
+
+  .tm-table.is-mobile-table th:last-child,
+  .tm-table.is-mobile-table td:last-child {
+    padding-right: 14px;
+  }
+
+  .tm-table.is-mobile-table .is-mobile-hidden {
+    display: none;
+  }
+
+  .tm-table.is-mobile-table .is-wrap {
+    min-width: 120px;
+  }
+}
+
+/* ------------------------------------------------------------------ 分段选择 */
+
+.tm-seg {
+  display: inline-flex;
+  max-width: 100%;
+  padding: 3px;
+  gap: 2px;
+  overflow-x: auto;
+  border-radius: 12px;
+  background: var(--tm-surface-3);
+  scrollbar-width: none;
+}
+
+.tm-seg::-webkit-scrollbar {
+  display: none;
+}
+
+.tm-seg button {
+  flex: 1 0 auto;
+  min-height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--tm-text-2);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.tm-seg button:hover {
+  color: var(--tm-text);
+}
+
+.tm-seg button[aria-checked="true"] {
+  background: var(--tm-surface);
+  color: var(--tm-text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.tm-seg.is-full {
+  display: flex;
+  width: 100%;
+}
+
+/* 带前后缀的分段选择（segmented 的 prefix / suffix）：「只算单次超过 [1 5 10] km」。
+   后缀和选项绑在一起不拆开；一行放不下时前缀自己占一行 */
+.tm-seg-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  min-width: 0;
+}
+
+.tm-seg-tail {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.tm-seg-affix {
+  color: var(--tm-text-hint);
+  font-size: 13px;
+}
+
+.tm-seg-tail > .tm-seg-affix {
+  flex: none;
+}
+
+.tm-seg-line .tm-seg button {
+  padding: 0 12px;
+}
+
+.tm-seg-line.is-full .tm-seg-tail {
+  flex: 1 1 auto;
+}
+
+.tm-seg-line.is-full .tm-seg {
+  flex: 1 1 auto;
+  width: auto;
+}
+
+/* 窄屏（320）上 7 个选项挤一挤也要放得下 */
+@media screen and (max-width: 374px) {
+  .tm-seg-line .tm-seg button {
+    padding: 0 9px;
+  }
+}
+
+/* ------------------------------------------------------------------ 小部件：标签、进度条、键值对 */
+
+.tm-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--tm-surface-2);
+  color: var(--tm-text-2);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.tm-pill .tm-svg {
+  width: 13px;
+  height: 13px;
+}
+
+.tm-pill.is-accent {
+  background: var(--tm-accent-soft);
+  color: var(--tm-accent);
+}
+
+.tm-pill.is-green {
+  background: var(--tm-green-soft);
+  color: var(--tm-green-pill);
+}
+
+.tm-pill.is-amber {
+  background: var(--tm-amber-soft);
+  color: var(--tm-amber-pill);
+}
+
+.tm-pill.is-red {
+  background: var(--tm-red-soft);
+  color: var(--tm-red);
+}
+
+.tm-pill.is-violet {
+  background: var(--tm-violet-soft);
+  color: var(--tm-violet);
+}
+
+.tm-pill.is-cyan {
+  background: var(--tm-cyan-soft);
+  color: var(--tm-cyan);
+}
+
+/* 次要的标签（「估算值」这类）：不填底色，只描一圈细边，比默认的灰底标签更不抢眼 */
+.tm-pill.is-muted {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--tm-line-strong);
+  color: var(--tm-text-hint);
+  font-weight: 500;
+}
+
+.tm-bar {
+  position: relative;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--tm-track);
+}
+
+.tm-bar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: var(--tm-accent);
+}
+
+.tm-bar.is-green > span {
+  background: var(--tm-green);
+}
+
+.tm-bar.is-amber > span {
+  background: var(--tm-amber);
+}
+
+.tm-bar.is-red > span {
+  background: var(--tm-red);
+}
+
+.tm-bar.is-violet > span {
+  background: var(--tm-violet);
+}
+
+.tm-bar.is-cyan > span {
+  background: var(--tm-cyan);
+}
+
+.tm-kv {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.tm-kv > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--tm-line);
+}
+
+.tm-kv > div:last-child {
+  border-bottom: 0;
+}
+
+.tm-kv dt {
+  flex: none;
+  color: var(--tm-text-hint);
+  font-size: 14px;
+}
+
+.tm-kv dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--tm-text);
+  font-size: 14.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+@media screen and (min-width: 1024px) {
+  .tm-kv.is-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 32px;
+  }
+
+  .tm-kv.is-2 > div:nth-last-child(2):nth-child(odd) {
+    border-bottom: 0;
+  }
+}
+
+/* ------------------------------------------------------------------ 空状态、错误、骨架 */
+
+.tm-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 36px 20px;
+  color: var(--tm-text-hint);
+  font-size: 14.5px;
+  text-align: center;
+}
+
+.tm-empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 6px;
+  border-radius: 16px;
+  background: var(--tm-surface-2);
+  color: var(--tm-text-hint);
+}
+
+.tm-empty-icon .tm-svg {
+  width: 28px;
+  height: 28px;
+}
+
+.tm-empty-title {
+  color: var(--tm-text);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.tm-empty-text {
+  max-width: 420px;
+}
+
+.tm-empty .tm-btn {
+  margin-top: 10px;
+}
+
+.tm-error .tm-empty-icon {
+  background: var(--tm-red-soft);
+  color: var(--tm-red);
+}
+
+.tm-error.is-auth .tm-empty-icon {
+  background: var(--tm-accent-soft);
+  color: var(--tm-accent);
+}
+
+.tm-error-detail {
+  max-width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  overflow-wrap: anywhere;
+  border-radius: 8px;
+  background: var(--tm-surface-2);
+  color: var(--tm-text-2);
+  font-family: var(--tm-font-mono);
+  font-size: 12px;
+  text-align: left;
+}
+
+.tm-skel {
+  display: block;
+  border-radius: 8px;
+  background: var(--tm-skeleton);
+  background-image: linear-gradient(90deg, transparent 0, var(--tm-skeleton-hi) 40%, transparent 80%);
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: tm-shimmer 1.4s linear infinite;
+}
+
+@keyframes tm-shimmer {
+  from {
+    background-position: 150% 0;
+  }
+
+  to {
+    background-position: -50% 0;
+  }
+}
+
+.tm-skel-line {
+  height: 12px;
+}
+
+.tm-skel-stats .tm-stat {
+  gap: 10px;
+}
+
+.tm-skel-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 6%;
+  height: 220px;
+  padding: 24px 8px 4px;
+}
+
+.tm-skel-chart .tm-skel {
+  flex: 1;
+  border-radius: 6px 6px 2px 2px;
+}
+
+/* ------------------------------------------------------------------ 图表、地图容器 */
+
+.tm-chart {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  height: var(--tm-chart-h, 260px);
+  /* 手机上在图表上竖着滑照样滚动页面；横着滑、双指交给 ECharts（看提示框、缩放） */
+  touch-action: pan-y;
+  /* ECharts 的提示框 z-index 很大，关在图表里，免得浮到吸顶导航栏上面 */
+  isolation: isolate;
+}
+
+@media screen and (max-width: 768px) {
+  .tm-chart {
+    height: var(--tm-chart-h-m, var(--tm-chart-h, 220px));
+  }
+}
+
+.tm-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-bottom: 8px;
+  color: var(--tm-text-2);
+  font-size: 12.5px;
+}
+
+.tm-chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tm-chart-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: currentColor;
+}
+
+/* ECharts 的提示框（chart.js 里生成的 HTML） */
+.tm-tip {
+  min-width: 120px;
+  font-family: var(--tm-font);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.tm-tip-title {
+  margin-bottom: 4px;
+  color: var(--tm-tooltip-fg);
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.tm-tip-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tm-tip-row i {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.tm-tip-row span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  opacity: 0.8;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-tip-row b {
+  flex: none;
+  margin-left: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.tm-map-wrap {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.tm-map {
+  position: relative;
+  width: 100%;
+  /* 内嵌地图不超过视口的 45%，免得手机上一屏全是地图、手指无处滚动；
+     以地图为主的页面用 ui.mapBox(id, { maxVh: 60 }) 放宽（写在 --tm-map-max 上） */
+  height: min(var(--tm-map-h, 320px), var(--tm-map-max, 45vh));
+  min-height: 180px;
+  background: var(--tm-surface-2);
+}
+
+.tm-card > .tm-map-wrap:first-child {
+  border-radius: var(--tm-r-lg) var(--tm-r-lg) 0 0;
+}
+
+.tm-card > .tm-map-wrap:only-child {
+  border-radius: var(--tm-r-lg);
+}
+
+/* 全屏：用 fixed 铺满，iPhone 的 Safari 不支持元素全屏 API */
+.tm-map-wrap.is-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  border-radius: 0 !important;
+}
+
+.tm-map-wrap.is-fullscreen .tm-map {
+  height: 100% !important;
+  max-height: none;
+}
+
+html.tm-map-full,
+html.tm-map-full body {
+  overflow: hidden;
+}
+
+/* ------------------------------------------------------------------ Leaflet（和 theme.css 的地图控件同款） */
+
+.leaflet-container {
+  isolation: isolate;
+  background: var(--tm-surface-2) !important;
+  font-family: var(--tm-font) !important;
+}
+
+/* 亮色：高德的配色比较艳，压淡一点，和 TeslaMate 首页地图（theme.css）一致 */
+html:not([data-theme="dark"]) .tm-map .leaflet-tile-pane {
+  filter: saturate(0.7) contrast(0.97) brightness(1.02);
+}
+
+/* 暗色：反色 + 色相转回来 + 调暗，白底地图变成深色底 */
+html[data-theme="dark"] .tm-map .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.82) contrast(0.9) saturate(0.4);
+}
+
+.tm-map .leaflet-control-zoom.leaflet-bar,
+.tm-map.leaflet-touch .leaflet-control-zoom.leaflet-bar,
+.tm-map .tm-map-btn.leaflet-bar {
+  overflow: hidden;
+  border: 1px solid var(--tm-line) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12) !important;
+}
+
+.tm-map .leaflet-control-zoom a,
+.tm-map.leaflet-touch .leaflet-control-zoom a,
+.tm-map .tm-map-btn a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  line-height: 34px;
+  border-bottom-color: var(--tm-line) !important;
+  border-radius: 0 !important;
+  background: var(--tm-glass-strong);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: var(--tm-text) !important;
+  font: 500 20px/34px var(--tm-font);
+  cursor: pointer;
+}
+
+.tm-map .tm-map-btn a .tm-svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* 触屏上按钮放大到 40px，手指好按（桌面鼠标用 34px 就够，地图上少挡一点） */
+@media (pointer: coarse) {
+  .tm-map .leaflet-control-zoom a,
+  .tm-map.leaflet-touch .leaflet-control-zoom a,
+  .tm-map .tm-map-btn a {
+    width: 40px;
+    height: 40px;
+    line-height: 40px;
+  }
+}
+
+.tm-map .leaflet-control-zoom a:hover,
+.tm-map .tm-map-btn a:hover {
+  background: var(--tm-surface-3);
+}
+
+.tm-map .leaflet-control-zoom a.leaflet-disabled {
+  background: var(--tm-glass-strong);
+  color: var(--tm-text-3) !important;
+  opacity: 0.6;
+}
+
+.tm-map .leaflet-control-attribution {
+  margin: 0 8px 6px 0 !important;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--tm-glass) !important;
+  color: var(--tm-text-2) !important;
+  font-size: 11px;
+}
+
+.tm-map .leaflet-top.leaflet-right .leaflet-control {
+  margin: 10px 10px 0 0;
+}
+
+.tm-map .leaflet-bottom.leaflet-right .leaflet-control-zoom {
+  margin: 0 10px 10px 0;
+}
+
+.tm-map-wrap.is-fullscreen .leaflet-top.leaflet-right .leaflet-control {
+  margin-top: calc(env(safe-area-inset-top) + 12px);
+  margin-right: calc(env(safe-area-inset-right) + 12px);
+}
+
+.tm-map-wrap.is-fullscreen .leaflet-bottom .leaflet-control {
+  margin-bottom: calc(env(safe-area-inset-bottom) + 10px) !important;
+}
+
+/* 触屏上单指不拖地图：提示用双指 */
+.tm-map-hint {
+  position: absolute;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.36);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+
+.tm-map-hint.is-shown {
+  opacity: 1;
+}
+
+.tm-map .leaflet-popup-content-wrapper,
+.tm-map .leaflet-popup-tip {
+  background: var(--tm-glass-strong);
+  color: var(--tm-text);
+  box-shadow: var(--tm-shadow-pop);
+}
+
+.tm-map .leaflet-popup-content-wrapper {
+  border-radius: 12px;
+}
+
+.tm-map .leaflet-popup-content {
+  margin: 10px 14px;
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.tm-map a.leaflet-popup-close-button {
+  color: var(--tm-text-hint);
+}
+
+/* 标记：divIcon + CSS，不用 Leaflet 自带的图片 */
+.tm-pin {
+  background: none;
+  border: 0;
+}
+
+.tm-pin-body {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-left: -14px;
+  margin-bottom: 8px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--tm-pin, var(--tm-accent-fill));
+  color: #fff;
+  font: 700 13px/1 var(--tm-font);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+/* 底下的小尖，指着真正的坐标点 */
+.tm-pin-body::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -9px;
+  width: 0;
+  height: 0;
+  margin-left: -5px;
+  border: 5px solid transparent;
+  border-top: 6px solid #fff;
+}
+
+.tm-pin-body .tm-svg {
+  width: 16px;
+  height: 16px;
+}
+
+.tm-pin.is-start {
+  --tm-pin: var(--tm-green-fill);
+}
+
+.tm-pin.is-end {
+  --tm-pin: var(--tm-red-fill);
+}
+
+.tm-pin.is-charge {
+  --tm-pin: var(--tm-amber-fill);
+}
+
+.tm-dot {
+  background: none;
+  border: 0;
+}
+
+.tm-dot::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 2.5px solid #fff;
+  border-radius: 50%;
+  background: var(--tm-accent-fill);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+/* ------------------------------------------------------------------ 折叠区（ui.details） */
+
+.tm-details {
+  min-width: 0;
+}
+
+/* 卡片样式时裁掉溢出：标题行悬停的底色不出圆角 */
+.tm-details.tm-card {
+  overflow: hidden;
+}
+
+.tm-details > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 8px 16px;
+  color: var(--tm-text);
+  font-size: 15px;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tm-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.tm-details > summary:hover {
+  background: var(--tm-surface-2);
+}
+
+.tm-details > summary:focus-visible {
+  outline: 2px solid var(--tm-accent);
+  outline-offset: -2px;
+}
+
+.tm-details-head {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 1px;
+  min-width: 0;
+}
+
+.tm-details-sub {
+  color: var(--tm-text-hint);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.tm-details-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--tm-text-2);
+}
+
+.tm-details-chev {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--tm-text-3);
+  transition: transform 0.2s var(--tm-ease);
+}
+
+.tm-details[open] > summary .tm-details-chev {
+  transform: rotate(180deg);
+}
+
+.tm-details-body {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 0 16px 16px;
+}
+
+/* 不带卡片外框（放在别的卡片里）时左右不留白，和卡片里的其它内容对齐 */
+.tm-details:not(.tm-card) > summary {
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.tm-details:not(.tm-card) > .tm-details-body {
+  padding-right: 0;
+  padding-left: 0;
+}
+
+@media screen and (min-width: 769px) {
+  .tm-details.tm-card > summary {
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+
+  .tm-details.tm-card > .tm-details-body {
+    padding: 0 20px 20px;
+  }
+}
+
+/* ------------------------------------------------------------------ 提示卡（ui.notice）
+   「正在充电」「没有正常结束」这类说明：浅色底，边框透明、不要阴影，和数据卡片区分开；内边距和 .tm-card.is-pad 一样 */
+
+.tm-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid transparent;
+  border-radius: var(--tm-r-lg);
+  background: var(--tm-amber-soft);
+  color: var(--tm-text);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+@media screen and (min-width: 769px) {
+  .tm-notice {
+    padding: 20px;
+  }
+}
+
+.tm-notice > .tm-svg {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  color: var(--tm-amber-text);
+}
+
+.tm-notice > p {
+  min-width: 0;
+}
+
+.tm-notice a {
+  font-weight: 500;
+}
+
+.tm-notice.is-green {
+  background: var(--tm-green-soft);
+}
+
+.tm-notice.is-green > .tm-svg {
+  color: var(--tm-green-text);
+}
+
+.tm-notice.is-accent {
+  background: var(--tm-accent-soft);
+}
+
+.tm-notice.is-accent > .tm-svg {
+  color: var(--tm-accent);
+}
+
+/* ------------------------------------------------------------------ 上一次 / 下一次（ui.neighbors） */
+
+.tm-neighbors {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.tm-neighbor {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--tm-line);
+  border-radius: var(--tm-r-md);
+  background: var(--tm-surface);
+  box-shadow: var(--tm-shadow);
+  color: var(--tm-text-2);
+  transition: background-color 0.12s;
+}
+
+a.tm-neighbor:hover {
+  background: var(--tm-surface-2);
+}
+
+a.tm-neighbor:active {
+  background: var(--tm-surface-3);
+}
+
+.tm-neighbor.is-next {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.tm-neighbor.is-empty {
+  box-shadow: none;
+  background: transparent;
+  font-size: 13px;
+}
+
+.tm-neighbor-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--tm-accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tm-neighbor.is-empty .tm-neighbor-label {
+  color: var(--tm-text-hint);
+}
+
+.tm-neighbor-label .tm-svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* 地点、行程标题最多两行：超充站的名字长，能区分的部分在最后 */
+.tm-neighbor-title {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--tm-text);
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* 「1月9日 17:25 · 8.2 km」是 ui.segs：320 宽一行放不下时后一段整段换到下一行，行首不带「·」 */
+.tm-neighbor-sub {
+  max-width: 100%;
+  color: var(--tm-text-hint);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+/* 右边那格是右对齐的：分隔点改画在每段的右边，每行最后一段的点落在盒子外面被裁掉（.tm-segs 默认画在左边） */
+.tm-neighbor.is-next .tm-neighbor-sub {
+  justify-content: flex-end;
+}
+
+.tm-neighbor.is-next .tm-neighbor-sub > *::before {
+  right: -1em;
+  left: auto;
+}
+
+/* ------------------------------------------------------------------ 排行榜（ui.rank） */
+
+.tm-rank {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* 名次徽标 + 右边（名字 / 数值、横条、小字） */
+.tm-rank-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.tm-rank-row[hidden] {
+  display: none;
+}
+
+.tm-rank-no {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  background: var(--tm-surface-2);
+  color: var(--tm-text-hint);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.tm-rank-no.is-top {
+  background: var(--tm-accent-soft);
+  color: var(--tm-accent);
+}
+
+.tm-rank-main {
+  display: grid;
+  flex: 1;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tm-rank-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tm-rank-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--tm-text);
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+/* 名字最多两行：超充站名字的区别在后半截，截断成「特斯拉超级充电站（…」就分不出来了。
+   截断放在里面这层：外层链接不能 overflow: hidden，触屏上往外扩的命中区（::after）才不会被裁掉 */
+.tm-rank-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+a.tm-rank-name:hover {
+  color: var(--tm-accent);
+}
+
+/* 数值不折行（320 宽时「27 次」会被挤成两行） */
+.tm-rank-value {
+  flex: none;
+  color: var(--tm-text);
+  font-size: 14.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tm-rank-sub {
+  overflow: hidden;
+  color: var(--tm-text-hint);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 和名字左对齐（24px 徽标 + 12px 间距），按钮自己有 12px 内边距 */
+.tm-rank-more {
+  margin: 10px 0 -6px 24px;
+}
+
+/* ------------------------------------------------------------------ 列表页公共部件（行程、充电、待机掉电） */
+
+/* 两栏布局：手机、平板一栏（筛选 → 汇总 → 图 → 列表）；桌面左边一栏放筛选、汇总和图，右边是列表 ——
+   列表铺满 1100px 宽时左右空得太开。.is-wide（比如切成十几列的表格时）桌面上也是一栏 */
+.tm-list-layout,
+.tm-list-aside,
+.tm-list-main {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  align-content: start;
+}
+
+.tm-list-layout > *,
+.tm-list-aside > *,
+.tm-list-main > * {
+  min-width: 0;
+}
+
+@media screen and (min-width: 1024px) {
+  .tm-list-layout:not(.is-wide) {
+    grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+    align-items: start;
+    gap: 24px;
+  }
+
+  /* 左栏窄，汇总固定两列 */
+  .tm-list-layout:not(.is-wide) .tm-list-aside .tm-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tm-list-layout:not(.is-wide) .tm-list-main > .tm-section:first-child .tm-section-head {
+    margin-top: -2px;
+  }
+}
+
+/* .is-sticky：左栏不高（筛选 + 汇总）时跟着滚动停在顶上，翻到列表哪里都看得到汇总、改得了筛选。
+   窗口矮的时候不停靠：筛选面板展开后左栏可能比窗口还高，下半截会一直看不到 */
+@media screen and (min-width: 1024px) and (min-height: 700px) {
+  .tm-list-layout.is-sticky:not(.is-wide) > .tm-list-aside {
+    position: sticky;
+    top: 76px;
+  }
+}
+
+/* 卡片里图表上面的一行：左边标题，右边合计（「每天里程 …… 1,814 km」） */
+.tm-chart-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+  color: var(--tm-text-2);
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.tm-chart-head .tm-num {
+  color: var(--tm-text);
+  font-weight: 600;
+}
+
+/* 筛选条（ui.filterBar） */
+.tm-filter {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.tm-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.tm-filter-bar .tm-btn {
+  flex: none;
+}
+
+/* 默认的按钮底色和页面底色几乎一样，筛选按钮放在页面上要有个边 */
+.tm-filter-bar .tm-btn:not(.is-soft):not(.is-text) {
+  border-color: var(--tm-line-strong);
+  background: var(--tm-surface);
+}
+
+.tm-filter-chev.tm-svg {
+  width: 16px;
+  height: 16px;
+  margin-right: -2px;
+  opacity: 0.7;
+  transition: transform 0.18s var(--tm-ease);
+}
+
+.tm-filter-bar [aria-expanded="true"] .tm-filter-chev {
+  transform: rotate(180deg);
+}
+
+.tm-filter-sum {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--tm-text-2);
+  font-size: 13.5px;
+}
+
+.tm-filter-panel {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.tm-filter-panel[hidden] {
+  display: none;
+}
+
+/* 筛选面板里的一项：粗体小标题 + 控件 + 小字说明 */
+.tm-field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tm-field > span:first-child,
+.tm-field > label:first-child {
+  color: var(--tm-text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.tm-field .tm-note {
+  margin: 0;
+}
+
+/* 带放大镜的搜索框：<span class="tm-search">${ui.icon("magnify")}<input class="tm-input" type="search"></span> */
+.tm-search {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.tm-search > .tm-svg {
+  position: absolute;
+  top: 50%;
+  left: 11px;
+  width: 18px;
+  height: 18px;
+  color: var(--tm-text-hint);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.tm-search > .tm-input {
+  width: 100%;
+  padding-left: 36px;
+}
+
+/* 按天分组（ui.dayGroup）：组头日期 + 当天合计，下面一张列表卡片；多组放在 .tm-days 里 */
+.tm-days {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.tm-day {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tm-day > * {
+  min-width: 0;
+}
+
+.tm-day-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 0 4px;
+}
+
+.tm-day-head h3 {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--tm-text);
+  font-size: 15px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-day-sum {
+  flex: none;
+  color: var(--tm-text-hint);
+  font-size: 13px;
+}
+
+/* 分页（ui.pager）：内容 + 底下「再显示 50 次 / 还有 180 次行程」或「共 230 次行程，已全部显示」 */
+.tm-pager {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.tm-pager-items {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.tm-pager-items > * {
+  min-width: 0;
+}
+
+.tm-pager-foot:empty,
+.tm-pager-items:empty {
+  display: none;
+}
+
+.tm-pager-more {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0 8px;
+}
+
+.tm-pager-more .tm-note,
+.tm-pager-end {
+  margin: 0;
+  text-align: center;
+}
+
+.tm-pager-more .tm-btn[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* ------------------------------------------------------------------ 统计首页的入口 */
+
+.tm-entries {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--tm-line);
+  border-radius: var(--tm-r-lg);
+  background: var(--tm-surface);
+  box-shadow: var(--tm-shadow);
+}
+
+.tm-entry {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 64px;
+  padding: 11px 16px;
+  color: var(--tm-text-2);
+  transition: background-color 0.12s;
+}
+
+.tm-entry + .tm-entry::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 64px;
+  right: 0;
+  height: 1px;
+  background: var(--tm-line);
+}
+
+.tm-entry:hover {
+  background: var(--tm-surface-2);
+}
+
+.tm-entry-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: var(--tm-accent-soft);
+  color: var(--tm-accent);
+}
+
+.tm-entry-icon .tm-svg {
+  width: 20px;
+  height: 20px;
+}
+
+.tm-entry-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tm-entry-title,
+.tm-entry-desc {
+  display: block;
+}
+
+.tm-entry-title {
+  color: var(--tm-text);
+  font-size: 15.5px;
+  font-weight: 600;
+}
+
+.tm-entry-desc {
+  overflow: hidden;
+  color: var(--tm-text-hint);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 手机上说明最多两行：320 宽时「把一段时间里的行程和充电连起来看」一行放不下 */
+@media screen and (max-width: 768px) {
+  .tm-entry-desc {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    white-space: normal;
+  }
+}
+
+@media screen and (min-width: 769px) {
+  .tm-entries {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    overflow: visible;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .tm-entry {
+    border: 1px solid var(--tm-line);
+    border-radius: var(--tm-r-md);
+    background: var(--tm-surface);
+    box-shadow: var(--tm-shadow);
+  }
+
+  .tm-entry + .tm-entry::before {
+    display: none;
+  }
+}
+
+
+/* Grafana 原版面板：一串紧凑的链接 */
+.tm-links {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 8px;
+  padding: 6px;
+}
+
+.tm-links a {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 40px;
+  padding: 6px 10px;
+  border-radius: var(--tm-r-sm);
+  color: var(--tm-text);
+  font-size: 14px;
+}
+
+.tm-links a span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-links a small {
+  margin-left: auto;
+  color: var(--tm-text-hint);
+  font-size: 12px;
+}
+
+.tm-links a .tm-svg {
+  width: 14px;
+  height: 14px;
+  color: var(--tm-text-3);
+}
+
+.tm-links a:hover {
+  background: var(--tm-surface-2);
+}
+
+@media screen and (min-width: 1024px) {
+  .tm-links {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.tm-links a span {
+  flex: none;
+  max-width: 100%;
+}
+
+.tm-links a small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 放在折叠区里（ui.details）时去掉外面那圈留白、链接本身的左右内边距伸到两边：文字和折叠区标题的图标对齐 */
+.tm-details-body > .tm-links {
+  margin: 0 -10px;
+  padding: 0;
+}
+
+/* 手机上两列放不下英文名，只留中文 */
+@media screen and (max-width: 768px) {
+  .tm-links a small {
+    display: none;
+  }
+
+  .tm-links a .tm-svg {
+    margin-left: auto;
+  }
+}
+
+/* ------------------------------------------------------------------ 工具类 */
+
+.tm-grid-2,
+.tm-grid-3 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+@media screen and (min-width: 1024px) {
+  .tm-grid-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tm-grid-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.tm-stack {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.tm-flex {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.tm-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.tm-muted {
+  color: var(--tm-text-hint);
+}
+
+.tm-small {
+  font-size: 13px;
+}
+
+.tm-strong {
+  color: var(--tm-text);
+  font-weight: 600;
+}
+
+.tm-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.tm-truncate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 触屏上的命中区至少 40px：页头的返回、换车，小节标题右边的「全部」这类链接，排行榜的名字，本身都只有 20～30px 高。
+   用透明的 ::after 往四周扩出去，不改排版（页面里自己的小链接加 tm-hit 也一样）。
+   分段选择、⋯ 按钮直接放大：分段选择的容器会横向滚动（overflow），扩出去的部分会被裁掉 */
+@media (pointer: coarse) {
+  .tm-back,
+  .tm-car-btn,
+  a.tm-section-action,
+  a.tm-rank-name,
+  .tm-hit {
+    position: relative;
+  }
+
+  .tm-back::after,
+  a.tm-section-action::after,
+  a.tm-rank-name::after,
+  .tm-hit::after {
+    content: "";
+    position: absolute;
+    inset: -10px -6px;
+  }
+
+  /* 名字下面紧挨着的横条是定位元素，后画的会盖住扩出去的部分 */
+  a.tm-rank-name {
+    z-index: 1;
+  }
+
+  /* 下面 8px 就是范围条：往下只扩 5px，不压到范围条的按钮上 */
+  .tm-car-btn::after {
+    content: "";
+    position: absolute;
+    inset: -6px 0 -5px;
+  }
+
+  .tm-icon-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .tm-seg button {
+    min-width: 40px;
+    min-height: 40px;
+  }
+}
+
+/* 这一段不在中间断行：放不下时整段折到下一行（「9月22日 18:05–」「次日 07:40」各包一个，就只会从「–」后面折） */
+.tm-nowrap {
+  white-space: nowrap;
+}
+
+.tm-note {
+  color: var(--tm-text-hint);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.tm-divider {
+  height: 1px;
+  margin: 12px 0;
+  background: var(--tm-line);
+}
+
+@media screen and (max-width: 768px) {
+  .tm-hide-mobile {
+    display: none !important;
+  }
+}
+
+@media screen and (min-width: 769px) {
+  .tm-only-mobile {
+    display: none !important;
+  }
+}

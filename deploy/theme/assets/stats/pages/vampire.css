@@ -1,0 +1,19 @@
+/* 待机掉电（pages/vampire.js）专用样式。颜色只用设计变量，亮暗自动适配 */
+
+/* 「天冷不计续航」的说明 */
+.pg-vd-cold {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: -4px;
+  padding: 0 2px;
+}
+
+.pg-vd-cold .tm-svg {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin-top: 2px;
+  color: var(--tm-cyan);
+}
+

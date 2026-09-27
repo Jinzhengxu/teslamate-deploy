@@ -1,0 +1,333 @@
+/* 统计首页（pages/home.js）。只用 stats.css 的设计变量，亮暗自动适配 */
+
+.pg-home-data {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.pg-home-data > .tm-section,
+.pg-home-data > .tm-grid-2 {
+  margin-top: 4px;
+}
+
+/* 数据块后面的入口分组：和分组之间的间距一致（公共样式只给相邻的 .tm-section 加） */
+.pg-home-slot + .tm-section {
+  margin-top: 12px;
+}
+
+/* 概况 + 电池：桌面上并排，手机上上下叠 */
+.pg-home-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+@media screen and (min-width: 1024px) {
+  .pg-home-top {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: 16px;
+  }
+}
+
+/* ---------------------------------------------------------------- 概况 */
+
+.pg-home-hero {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pg-home-car {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px 16px 14px;
+}
+
+.pg-home-car-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--tm-accent-soft);
+  color: var(--tm-accent);
+}
+
+.pg-home-car-icon .tm-svg {
+  width: 26px;
+  height: 26px;
+}
+
+.pg-home-car-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pg-home-car-name {
+  overflow: hidden;
+  color: var(--tm-text);
+  font-family: var(--tm-font-display);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pg-home-car-model {
+  overflow: hidden;
+  color: var(--tm-text-hint);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pg-home-updated {
+  flex: none;
+  align-self: flex-start;
+  margin-top: 2px;
+  color: var(--tm-text-hint);
+  font-size: 12px;
+}
+
+/* 正在充电 / 行驶的状态行：夹在车名和四格数字之间，整行是链接。颜色只靠「充电中 / 行驶中」标签，文字用次要色 */
+.pg-home-live {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--tm-line);
+  color: var(--tm-text-2);
+  /* 和列表行的副标题一样大 */
+  font-size: 13px;
+  transition: background-color 0.12s;
+}
+
+.pg-home-live:hover,
+.pg-home-live:active {
+  background: var(--tm-surface-2);
+}
+
+/* 卡片裁掉了溢出，焦点框画在里面 */
+.pg-home-live:focus-visible,
+a.pg-home-fact:focus-visible {
+  outline-offset: -2px;
+}
+
+.pg-home-facts {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid var(--tm-line);
+}
+
+@media screen and (min-width: 560px) {
+  .pg-home-facts {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.pg-home-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 12px 16px 13px;
+  color: var(--tm-text-2);
+}
+
+/* 格子之间的细线：两列时第 1、3 格画右边、前两格画下边；四列时前三格画右边 */
+.pg-home-fact:nth-child(odd) {
+  border-right: 1px solid var(--tm-line);
+}
+
+.pg-home-fact:nth-child(-n + 2) {
+  border-bottom: 1px solid var(--tm-line);
+}
+
+@media screen and (min-width: 560px) {
+  .pg-home-fact:nth-child(-n + 3) {
+    border-right: 1px solid var(--tm-line);
+  }
+
+  .pg-home-fact:nth-child(4) {
+    border-right: 0;
+  }
+
+  .pg-home-fact:nth-child(-n + 2) {
+    border-bottom: 0;
+  }
+}
+
+a.pg-home-fact {
+  transition: background-color 0.12s;
+}
+
+a.pg-home-fact:hover,
+a.pg-home-fact:active {
+  background: var(--tm-surface-2);
+}
+
+.pg-home-fact-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--tm-text-hint);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.pg-home-fact-label .tm-svg {
+  flex: none;
+  width: 15px;
+  height: 15px;
+}
+
+.pg-home-fact-value {
+  overflow: hidden;
+  color: var(--tm-text);
+  font-family: var(--tm-font-display);
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pg-home-fact .tm-bar {
+  margin: 3px 0 1px;
+}
+
+.pg-home-fact-sub {
+  overflow: hidden;
+  color: var(--tm-text-hint);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- 电池小卡 */
+
+/* 桌面上和概况卡片并排、被拉高时（正在充电 / 行驶多了一行状态），多出来的高度平分到各块之间：
+   标题贴顶、说明贴底，不在进度条和说明之间空出一大段 */
+.pg-home-batt {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px 16px 14px;
+}
+
+.pg-home-batt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pg-home-batt-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--tm-text);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.pg-home-batt-title .tm-svg {
+  width: 18px;
+  height: 18px;
+  color: var(--tm-green-text);
+}
+
+.pg-home-chevron {
+  width: 18px;
+  height: 18px;
+  color: var(--tm-text-3);
+}
+
+.pg-home-batt-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pg-home-batt-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.pg-home-batt-value {
+  color: var(--tm-text);
+  font-family: var(--tm-font-display);
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.pg-home-batt-note {
+  color: var(--tm-text-hint);
+  font-size: 12px;
+}
+
+/* ---------------------------------------------------------------- 本月 */
+
+.pg-home-delta {
+  color: var(--tm-text-2);
+  font-weight: 600;
+}
+
+.pg-home-delta.is-better {
+  color: var(--tm-green-text);
+}
+
+.pg-home-delta.is-worse {
+  color: var(--tm-amber-text);
+}
+
+/* ---------------------------------------------------------------- Grafana 原版面板（折叠） */
+
+/* 跟在最后一组入口后面：和入口分组之间的间距一致（公共样式只给相邻的 .tm-section 加） */
+.pg-home-grafana {
+  margin-top: 12px;
+}
+
+/* 标题行照入口行（.tm-entry）的尺寸画：图标放在浅灰圆角方块里、行高 64、左右 16（宽屏也不放大到 20），
+   和上面紧挨着的入口对齐成一列。选择器多带两个类，压过公共样式宽屏下的 .tm-details.tm-card > summary */
+.tm-details.tm-card.pg-home-grafana > summary {
+  gap: 12px;
+  min-height: 64px;
+  padding: 11px 16px;
+}
+
+.pg-home-grafana > summary .tm-details-icon {
+  flex: none;
+  box-sizing: border-box;
+  width: 36px;
+  height: 36px;
+  padding: 8px;
+  border-radius: 11px;
+  background: var(--tm-surface-2);
+}
+
+.pg-home-grafana .tm-details-title {
+  font-size: 15.5px;
+}

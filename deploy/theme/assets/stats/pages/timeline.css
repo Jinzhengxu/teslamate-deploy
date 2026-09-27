@@ -1,0 +1,55 @@
+/* 时间线（pages/timeline.js）专用样式。只用 stats.css 的设计变量，亮暗自动适配。
+   布局、筛选条、汇总、按天分组、分页、展开行都是核心的（.tm-list-layout.is-sticky、ui.filterBar、ui.stats 的 dense、ui.dayGroup、ui.pager、列表的 expand），
+   这里只有时间线自己的：类型标签、停车时间段折行、明细面板的紧凑键值对 */
+
+/* ---------------------------------------------------------------- 类型标签：图标 + 名字 + 条数 */
+
+.pg-tl-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pg-tl-chips .tm-chip {
+  gap: 5px;
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 14px;
+}
+
+.pg-tl-chip .tm-svg {
+  width: 16px;
+  height: 16px;
+  opacity: 0.85;
+}
+
+.pg-tl-chip-n {
+  /* 12.5px 的小字，--tm-text-hint 在标签底色上不到 4.5:1 */
+  color: var(--tm-text-2);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.pg-tl-chip[aria-pressed="true"] .pg-tl-chip-n {
+  color: inherit;
+}
+
+/* ---------------------------------------------------------------- 列表行 */
+
+/* 停车行的「20:21–次日 07:56」：窄屏放不下时从「–」后面折成两行（公共样式是单行省略，会把结束时间截掉） */
+.pg-tl-span {
+  white-space: normal;
+}
+
+/* 展开的明细（停车、数据缺失、软件更新）：比详情页的键值对紧凑一点，展开好几行时不至于把列表撑得太长 */
+.pg-tl .tm-row-panel .tm-kv > div {
+  padding: 7px 0;
+}
+
+.pg-tl .tm-row-panel .tm-kv dt {
+  font-size: 13px;
+}
+
+.pg-tl .tm-row-panel .tm-kv dd {
+  font-size: 13.5px;
+}

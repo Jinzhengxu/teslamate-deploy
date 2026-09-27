@@ -1,0 +1,121 @@
+/* 车辆状态（pages/states.js）专用样式。只用 stats.css 的设计变量，亮暗自动适配。 */
+
+/* 状态的颜色和图表一致：行驶 c1、充电 c4、更新 c2、在线 c5、休眠 c3、离线 c6 */
+.pg-states-item.is-driving {
+  --pg-states-c: var(--tm-c1);
+}
+
+.pg-states-item.is-charging {
+  --pg-states-c: var(--tm-c4);
+}
+
+.pg-states-item.is-updating {
+  --pg-states-c: var(--tm-c2);
+}
+
+.pg-states-item.is-online {
+  --pg-states-c: var(--tm-c5);
+}
+
+.pg-states-item.is-asleep {
+  --pg-states-c: var(--tm-c3);
+}
+
+.pg-states-item.is-offline {
+  --pg-states-c: var(--tm-c6);
+}
+
+/* ---------------------------------------------------------------- 快捷范围 */
+
+.pg-states-quick .tm-seg {
+  max-width: 420px;
+}
+
+/* ---------------------------------------------------------------- 布局
+   手机、平板：一列。桌面：状态图占宽的一栏，累计时长放右边窄栏 */
+
+.pg-states-layout {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+@media screen and (min-width: 1024px) {
+  .pg-states-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
+    gap: 24px;
+  }
+
+  /* 两栏的卡片一样高（和核心 .tm-grid-2 里并排的小节一样）：小节竖排，最后一张卡片撑满剩下的高度，
+     图和列表照常靠上，底边对齐 */
+  .pg-states-layout > .tm-section {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .pg-states-layout > .tm-section > .tm-card:last-child {
+    flex: 1 1 auto;
+  }
+}
+
+.pg-states-chart {
+  width: 100%;
+  min-height: 120px;
+}
+
+/* ---------------------------------------------------------------- 累计时长 */
+
+.pg-states-list {
+  display: grid;
+  gap: 14px;
+}
+
+.pg-states-item {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pg-states-item-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  font-size: 14px;
+}
+
+.pg-states-item-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--tm-text);
+  font-weight: 600;
+}
+
+.pg-states-item-name i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--pg-states-c);
+}
+
+.pg-states-item-head b {
+  color: var(--tm-text);
+  font-weight: 600;
+}
+
+.pg-states-bar {
+  position: relative;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--tm-track);
+}
+
+.pg-states-bar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: var(--pg-states-c);
+}
