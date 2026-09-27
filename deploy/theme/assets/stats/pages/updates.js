@@ -7,6 +7,7 @@ import * as ui from "../core/ui.js";
 import * as api from "../core/api.js";
 import * as fmt from "../core/format.js";
 import * as chart from "../core/chart.js";
+import { shortVersion, releaseNotes } from "./_shared.js";
 
 export const title = "软件更新";
 export const range = { default: "all" };
@@ -29,12 +30,23 @@ const MEDIAN_SQL = `SELECT percentile_disc(0.5) WITHIN GROUP (ORDER BY since_las
 // 当前版本：最近一次更新装上的版本，不跟时间范围走
 const CURRENT_SQL = `select version, start_date from updates where car_id = $car_id order by start_date desc limit 1`;
 
-// 面板 Updates 表的原 SQL。改动：多取 id、结束时间、完整版本号；「距上一次」除了面板的 age（「1 mon 6 days」），
-// 另外按本地日期算天数（面板用的是 UTC 日期，凌晨装的更新会算到前一天，天数差通常一样）
-const TABLE_SQL = `with u as (
-  select *, coalesce(lag(start_date) over(order by start_date desc), now()) as next_start_date
+// 面板 Updates 表的 SQL，改动：多取 id、结束时间、完整版本号；「距上一次」除了面板的 age（「1 mon 6 days」），
+// 另外按本地日期算天数（面板用的是 UTC 日期，凌晨装的更新会算到前一天，天数差通常一样）。
+// 面板先按时间范围筛更新再开窗，范围不从第一次更新开始时，范围内第一行的上一次被截掉（面板显示空），
+// 最后一个版本的「期间」也只算到范围结束。这里先对这辆车的全部更新取上一次 / 下一次，再按范围筛（同 timeline.js 的 PARK_SQL），
+// 续航和充电也按这些版本的完整期间取，不再受时间范围限制：表头说的「从这次更新到下一次更新（或现在）」才名副其实
+const TABLE_SQL = `with a as (
+  select *,
+         lag(start_date) over (order by start_date) as prev_start_date,
+         coalesce(lead(start_date) over (order by start_date), now()) as next_start_date
   from updates
-  where car_id = $car_id and $__timeFilter(start_date)
+  where car_id = $car_id
+),
+u as (
+  select * from a where $__timeFilter(start_date)
+),
+span as (
+  select min(start_date) as lo, max(next_start_date) as hi from u
 ),
 rng as (
   SELECT
@@ -45,27 +57,27 @@ rng as (
     select usable_battery_level, start_date as date, start_rated_range_km as rated_battery_range_km, start_ideal_range_km as ideal_battery_range_km, 'Drive' as action
     from drives d
     inner join positions p on d.start_position_id = p.id
-    where d.car_id = $car_id and $__timeFilter(start_date) and usable_battery_level > 0
+    where d.car_id = $car_id and d.start_date between (select lo from span) and (select hi from span) and usable_battery_level > 0
     union all
     select end_battery_level as usable_battery_level, end_date, end_rated_range_km as rated_battery_range_km, end_ideal_range_km as ideal_battery_range_km, 'Charge' as action
     from charging_processes p
-    where $__timeFilter(end_date) and p.car_id = $car_id
+    where p.end_date between (select lo from span) and (select hi from span) and p.car_id = $car_id
   ) as data
   GROUP BY 1
 )
 select
   u.id, u.start_date, u.end_date,
   extract(epoch from u.end_date - u.start_date) as update_duration,
-  age(date(u.start_date), date(lag(u.start_date) over (order by u.start_date))) as since_last_update,
+  age(date(u.start_date), date(u.prev_start_date)) as since_last_update,
   date(timezone('$__timezone', timezone('UTC', u.start_date)))
-    - date(timezone('$__timezone', timezone('UTC', lag(u.start_date) over (order by u.start_date)))) as days_since,
+    - date(timezone('$__timezone', timezone('UTC', u.prev_start_date))) as days_since,
   split_part(u.version, ' ', 1) as version,
   u.version as version_full,
   sum(r.chg_ct) as chg_ct,
   convert_km(avg(r.battery_rng), '$length_unit')::numeric(6,2) as avg_range
 from u u
 left join rng r on r.date between u.start_date and u.next_start_date
-group by u.id, u.car_id, u.start_date, u.end_date, next_start_date, split_part(u.version, ' ', 1), u.version
+group by u.id, u.car_id, u.start_date, u.end_date, u.prev_start_date, u.next_start_date, split_part(u.version, ' ', 1), u.version
 order by u.start_date desc`;
 
 // ---------------------------------------------------------------- 页面
@@ -175,16 +187,6 @@ function daysAgo(ms) {
 }
 
 // ---------------------------------------------------------------- 表格单元格
-
-// 「2026.32.1 429934134f」→「2026.32.1」（面板也是取空格前面那段）
-function shortVersion(v) {
-  return v ? String(v).split(" ")[0] : null;
-}
-
-// 版本号只放行「数字.数字…」这种，别把数据库里的任意文本拼进链接
-function releaseNotes(v) {
-  return v && /^\d{4}\.\d{1,3}(\.\d{1,3}){0,3}$/.test(v) ? `https://www.notateslaapp.com/software-updates/version/${v}/release-notes` : null;
-}
 
 function versionCell(v, r) {
   const url = releaseNotes(v);

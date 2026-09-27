@@ -189,22 +189,32 @@ export async function render(ctx) {
       rng: RANGE_SQL(id),
       recovered: RECOVERED_SQL(id),
       hist: HIST_SQL(id),
-      nb: DRIVE_ITEM_SQL(NEIGHBOR_WHERE(id))
+      nb: DRIVE_ITEM_SQL(NEIGHBOR_WHERE(id)),
+      // 链接里的行程不是当前这辆车的（别人发来的链接、换过车）：查出是哪辆，给个切换的按钮（和充电详情一样）
+      owner: `select car_id from drives where id = ${id}`
     },
     { signal: ctx.signal }
   );
 
   const r = d.drive[0];
   if (!r) {
-    ctx.setTitle("找不到这次行程");
+    const owner = d.owner[0] && ctx.cars.find((c) => c.id === d.owner[0].car_id);
+    const name = owner && (owner.label || owner.name);
+    ctx.setTitle(owner ? "不是这辆车的行程" : "找不到这次行程");
     ui.render(
       ctx.root,
       ui.card(
-        ui.empty(`没有编号 ${id} 的行程。可能已经删除，或者是另一辆车的。`, {
-          icon: "road-variant",
-          title: "找不到这次行程",
-          action: ui.button("回到行程列表", { href: ctx.href("/stats/drives"), kind: "soft" })
-        })
+        owner
+          ? ui.empty(`这次行程属于「${name}」。`, {
+              icon: "car-multiple",
+              title: "不是这辆车的行程",
+              action: ui.button(`切换到${name}`, { kind: "soft", href: ctx.href(`/stats/drives/${id}`, { car: owner.id }) })
+            })
+          : ui.empty(`没有编号 ${id} 的行程，可能已经被删除了。`, {
+              icon: "road-variant",
+              title: "找不到这次行程",
+              action: ui.button("回到行程列表", { href: ctx.href("/stats/drives"), kind: "soft" })
+            })
       )
     );
     return;
@@ -226,10 +236,10 @@ export async function render(ctx) {
   ui.render(
     ctx.root,
     html`
+      ${stateNote(state, rg)}
       <div class="pg-drive-layout">
         <div class="pg-drive-mapcol">${ui.card(ui.mapBox("pg-drive-map"), { pad: false })}</div>
         <div class="pg-drive-main">
-          ${stateNote(state, rg)}
           ${ui.card(routeBlock(r, state), { pad: false })}
           ${state === "done"
             ? html`${mainStats(r, rg)}${ui.card(detailKv(r, rg, recovered, ctx.settings), { title: "详细数据" })}`
@@ -272,7 +282,7 @@ export async function render(ctx) {
 
 // ---------------------------------------------------------------- 上半部分
 
-// 没有结束时间的行程顶上的提示：正在行驶（蓝）/ 中途断掉（琥珀）。文字和充电详情的同一种提示对应；
+// 没有结束时间的行程顶上的提示：正在行驶（蓝）/ 中途断掉（琥珀）。和充电详情一样整宽放在页面最上面（地图也在它下面）；
 // 句子写成一行，中文句子中间换行会多出一个空格
 function stateNote(state, rg) {
   if (state === "driving") {
@@ -287,10 +297,10 @@ function stateNote(state, rg) {
 // 起终点：完整地址 + 时间 + 收藏点链接（面板表格里地址那一列的「Create or edit geo-fence」）
 function routeBlock(r, state) {
   const fence = (gid, lat, lng) => {
-    if (gid) return html`<a class="pg-drive-fence" href="/geo-fences/${+gid}/edit">${ui.icon("map-marker")}编辑收藏点</a>`;
+    if (gid) return html`<a class="pg-drive-fence tm-hit" href="/geo-fences/${+gid}/edit">${ui.icon("map-marker")}编辑收藏点</a>`;
     if (lat == null || lng == null) return "";
     const q = new URLSearchParams({ lat: String(lat), lng: String(lng) });
-    return html`<a class="pg-drive-fence" href="/geo-fences/new?${q.toString()}">${ui.icon("map-marker")}设为收藏点</a>`;
+    return html`<a class="pg-drive-fence tm-hit" href="/geo-fences/new?${q.toString()}">${ui.icon("map-marker")}设为收藏点</a>`;
   };
   const stop = (kind, name, full, time, link) => html`<li class="pg-drive-stop is-${kind}">
     <span class="pg-drive-dot" aria-hidden="true"></span>
@@ -305,7 +315,8 @@ function routeBlock(r, state) {
     ${stop("start", r.start_place || UNKNOWN_PLACE, r.start_full, fmt.time(r.start_date), fence(r.start_geofence_id, r.start_lat, r.start_lng))}
     ${state === "done"
       ? stop("end", r.end_place || UNKNOWN_PLACE, r.end_full, endTime(r.start_date, r.end_date), fence(r.end_geofence_id, r.end_lat, r.end_lng))
-      : stop("end", state === "driving" ? "行驶中" : "没有结束记录", null, "—", "")}
+      : // 没有终点：不用红色的终点圆点（看着像已经到了），颜色和列表里「行驶中 / 未完成」的标签、地图上的当前位置点对应
+        stop(state === "driving" ? "live" : "open", state === "driving" ? "行驶中" : "没有结束记录", null, "—", "")}
   </ol>`;
 }
 

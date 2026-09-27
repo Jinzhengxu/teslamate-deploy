@@ -91,3 +91,10 @@
   padding: 0 11px;
   font-size: 13px;
 }
+
+/* 触屏上还是 40px 高（核心 .tm-seg button 的触屏尺寸），上面这条选择器更具体，会把它盖掉 */
+@media (pointer: coarse) {
+  .pg-charges .tm-section-head .tm-seg button {
+    min-height: 40px;
+  }
+}

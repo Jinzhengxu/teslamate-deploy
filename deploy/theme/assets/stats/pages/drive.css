@@ -86,6 +86,16 @@
   border-color: var(--tm-red);
 }
 
+/* 没结束的行程没有终点：正在开是蓝色（和地图上的当前位置点一样），中途断掉是琥珀色虚线圈（和「未完成」标签一样；
+   虚线用 2px，3px 在 12px 的小圆上断成几块看不出是圈） */
+.pg-drive-stop.is-live .pg-drive-dot {
+  border-color: var(--tm-accent);
+}
+
+.pg-drive-stop.is-open .pg-drive-dot {
+  border: 2px dashed var(--tm-amber);
+}
+
 .pg-drive-stop-main {
   flex: 1 1 auto;
   min-width: 0;

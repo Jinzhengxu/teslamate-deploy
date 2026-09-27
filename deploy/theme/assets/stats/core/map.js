@@ -10,6 +10,7 @@
  *   - 内嵌地图最高占视口的比例：容器（.tm-map 或外层 .tm-map-wrap）上的 data-max-vh（ui.mapBox 的 maxVh 输出），默认 45。
  */
 import { html, icon, render, onLeave, esc, isHtml } from "./ui.js";
+import { loadError } from "./api.js";
 
 const BASE = "/stats/vendor/leaflet-1.9.4/";
 const TILES = "https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}";
@@ -23,7 +24,8 @@ function loadCss(href) {
     l.rel = "stylesheet";
     l.href = href;
     l.onload = () => resolve();
-    l.onerror = () => reject(new Error("地图样式加载失败"));
+    // 登录过期时 Caddy 回的是登录页：探一下，是 401 就显示「重新登录」
+    l.onerror = () => loadError(href, new Error("地图样式加载失败")).then(reject);
     // 插在 stats.css 前面，让我们的样式（同样的优先级）盖过 Leaflet 默认样式
     const ours = document.querySelector('link[href$="stats.css"]');
     document.head.insertBefore(l, ours);
@@ -38,7 +40,7 @@ function loadJs(src) {
     s.onload = () => resolve();
     s.onerror = () => {
       s.remove();
-      reject(new Error("地图组件加载失败，检查网络后重试"));
+      loadError(src, new Error("地图组件加载失败，检查网络后重试")).then(reject);
     };
     document.head.appendChild(s);
   });
@@ -200,6 +202,8 @@ export async function create(el, { interactive = true, zoomControl = true, fulls
     autoPanPaddingBottomRight: [hasZoom || (interactive && fullscreen) ? 56 : 12, 12]
   };
   m.__tmPins = new Set();
+  // 右上的全屏按钮、右下的缩放按钮：fit 按它们留出右边一条
+  m.__tmCtl = { zoom: hasZoom, fullscreen: interactive && fullscreen };
 
   if (interactive) {
     if (hasZoom) Lf.control.zoom({ position: "bottomright", zoomInTitle: "放大", zoomOutTitle: "缩小" }).addTo(m);
@@ -258,17 +262,27 @@ function addFullscreen(m, node, touch) {
       const sync = (on) => {
         render(a, html`${icon(on ? "fullscreen-exit" : "fullscreen")}`);
         a.title = on ? "退出全屏" : "全屏";
-        a.setAttribute("aria-label", a.title);
+        a.setAttribute("aria-label", "全屏");
+        a.setAttribute("aria-pressed", on ? "true" : "false");
       };
       sync(false);
       Lf.DomEvent.disableClickPropagation(box);
+      const toggle = () => {
+        if (fullState && fullState.map === m) fullState.exit(true);
+        else enter();
+      };
       Lf.DomEvent.on(a, "click", (e) => {
         Lf.DomEvent.preventDefault(e);
-        if (fullState && fullState.map === m) fullState.exit();
-        else enter();
+        toggle();
+      });
+      // 角色是按钮，空格也要能按（<a> 默认只认回车，空格会把页面往下滚一屏）
+      a.addEventListener("keydown", (e) => {
+        if (e.key !== " ") return;
+        e.preventDefault();
+        if (!e.repeat) toggle();
       });
       const onKey = (e) => {
-        if (e.key === "Escape") fullState && fullState.exit();
+        if (e.key === "Escape") fullState && fullState.exit(true);
       };
       function enter() {
         exitFullscreen();
@@ -283,9 +297,13 @@ function addFullscreen(m, node, touch) {
         m.scrollWheelZoom.enable();
         sync(true);
         document.addEventListener("keydown", onKey);
+        // 全屏时地图盖住了整页，Tab 不能走到底下看不见的内容上：地图以外的都设成 inert
+        const inerted = inertOutside(wrap);
         fullState = {
           map: m,
-          exit() {
+          // focus：用户自己退出（按钮、Esc）时焦点还给全屏按钮；离开页面时不动
+          exit(focus = false) {
+            for (const el of inerted) el.inert = false;
             wrap.classList.remove("is-fullscreen");
             for (const [el, prop, v, prio] of saved) {
               if (v) el.style.setProperty(prop, v, prio);
@@ -297,7 +315,10 @@ function addFullscreen(m, node, touch) {
             sync(false);
             document.removeEventListener("keydown", onKey);
             fullState = null;
-            if (m._container && m._container.isConnected) m.invalidateSize();
+            if (m._container && m._container.isConnected) {
+              m.invalidateSize();
+              if (focus) a.focus({ preventScroll: true });
+            }
           }
         };
         m.invalidateSize();
@@ -306,6 +327,21 @@ function addFullscreen(m, node, touch) {
     }
   });
   new Ctl().addTo(m);
+}
+
+// el 以外的整页设成 inert：从 el 往上到 body，每一层的兄弟节点都设上（本来就是 inert 的不算）。返回设过的，退出时去掉
+function inertOutside(el) {
+  const out = [];
+  for (let n = el; n && n !== document.body; n = n.parentElement) {
+    const parent = n.parentElement;
+    if (!parent) break;
+    for (const sib of parent.children) {
+      if (sib === n || sib.inert || sib.tagName === "SCRIPT" || sib.tagName === "LINK") continue;
+      sib.inert = true;
+      out.push(sib);
+    }
+  }
+  return out;
 }
 
 // 临时改一条内联样式（!important），原来的值记进 saved 以便恢复
@@ -442,9 +478,20 @@ export function circles(m, points, { radius = 5, color = "accent", opacity = 0.5
 
 const PIN_H = 38;
 
+// 地图右边控件（全屏、缩放按钮）连同 10px 边距占多宽；没有控件是 0。地图还没排版（量出来是 0）时按 34px 的按钮算
+function controlStrip(m) {
+  const ctl = m.__tmCtl;
+  if (!ctl || !(ctl.zoom || ctl.fullscreen)) return 0;
+  let w = 0;
+  for (const el of m.getContainer().querySelectorAll(".leaflet-right .leaflet-control:not(.leaflet-control-attribution)")) w = Math.max(w, el.offsetWidth);
+  return (w || 34) + 10;
+}
+
 // 把视野调到能看全这些图层（或 WGS 坐标数组）。
 // 留白四边默认各 padding；地图上有起 / 终 / 充电图钉（38px 高、尖在点上）落在范围里时，顶部至少 44；
-// 目标里有 circles 时，四边至少「最大半径 + 8」。paddingTopLeft / paddingBottomRight（[x, y]）直接给就照用
+// 目标里有 circles 时，四边至少「最大半径 + 8」。
+// 右上的全屏按钮、右下的缩放按钮都靠右：右边再让出控件那一条，圆、图钉、轨迹端点就不会压在按钮底下（只加右边，
+// 上下还是原来的留白，不然窄地图上三面都缩进去太多）。paddingTopLeft / paddingBottomRight（[x, y]）直接给就照用
 export function fit(m, target, { padding = 28, maxZoom = 16, paddingTopLeft, paddingBottomRight } = {}) {
   const Lf = window.L;
   let bounds = null;
@@ -473,6 +520,9 @@ export function fit(m, target, { padding = 28, maxZoom = 16, paddingTopLeft, pad
     l = Math.max(l, 20);
     r = Math.max(r, 20);
   }
+  // 控件那一条之外，再留出半个图钉（14px）或最大的圆，外加 6px 间隙
+  const strip = controlStrip(m);
+  if (strip) r = Math.max(r, strip + Math.max(pins.length ? 14 : 0, maxR) + 6);
   // 地图很小时留白别超过一半，不然 fitBounds 算出来的缩放级别是负的
   const size = m.getSize();
   const k = size.x > 0 && size.y > 0 ? Math.min(1, (size.x * 0.5) / Math.max(1, l + r), (size.y * 0.5) / Math.max(1, t + b)) : 1;

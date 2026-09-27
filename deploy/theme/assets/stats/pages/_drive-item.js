@@ -106,11 +106,13 @@ order by d0.start_date desc, d0.id desc`;
 }
 
 // 没结束的行程一般没有起终点（TeslaMate 结束时才按位置点补上），只有开始时间：
-// 正在行驶的写「正在路上」，中途断掉的写「没有结束的行程」；有起点的写「家 → ？」
+// 正在行驶的写「正在路上」，中途断掉的写「没有结束的行程」；有起点的终点写「行驶中 / 没有结束记录」，和详情页路线卡片的写法一样
+// （写成「家 → ？」像是数据坏了，读屏也会念成「问号」）
 export function driveTitle(row) {
   if (row.end_date == null) {
-    if (row.start_place) return `${row.start_place} → ？`;
-    return row.state === "driving" ? "正在路上" : "没有结束的行程";
+    const live = row.state === "driving";
+    if (row.start_place) return `${row.start_place} → ${live ? "行驶中" : "没有结束记录"}`;
+    return live ? "正在路上" : "没有结束的行程";
   }
   return `${row.start_place || UNKNOWN_PLACE} → ${row.end_place || UNKNOWN_PLACE}`;
 }

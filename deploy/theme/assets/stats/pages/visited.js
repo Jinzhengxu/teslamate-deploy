@@ -35,8 +35,10 @@ from l
 where plat is null or abs(latitude - plat) > 0.0003 or abs(longitude - plng) > 0.0004
 order by time`;
 
-// 面板「distance traveled」：范围内开始的行程，最大结束里程 − 最小开始里程（面板取整后拼上单位，这里返回数字自己格式化）
-const MILEAGE_SQL = `select convert_km((max(end_km) - min(start_km))::numeric, '$length_unit') as mileage, count(*) as drives
+// 面板「distance traveled」：范围内开始的行程，最大结束里程 − 最小开始里程（面板取整后拼上单位，这里返回数字自己格式化）。
+// 行程次数只数已经结束的：进行中和中途断掉的不计入次数，和行程列表、驾驶统计对得上（CONVENTIONS (e)）
+const MILEAGE_SQL = `select convert_km((max(end_km) - min(start_km))::numeric, '$length_unit') as mileage,
+  count(*) filter (where end_date is not null) as drives
 from drives where car_id = $car_id and $__timeFilter(start_date)`;
 
 // 面板的充电量那格：充入、用电（取充入和用电里大的那个）、效率。只算充进超过 0.01 kWh 的

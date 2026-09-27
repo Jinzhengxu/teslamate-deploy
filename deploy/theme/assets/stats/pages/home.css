@@ -290,10 +290,6 @@ a.pg-home-fact:active {
 
 /* ---------------------------------------------------------------- 本月 */
 
-.pg-home-nobr {
-  white-space: nowrap;
-}
-
 .pg-home-delta {
   color: var(--tm-text-2);
   font-weight: 600;
@@ -312,4 +308,26 @@ a.pg-home-fact:active {
 /* 跟在最后一组入口后面：和入口分组之间的间距一致（公共样式只给相邻的 .tm-section 加） */
 .pg-home-grafana {
   margin-top: 12px;
+}
+
+/* 标题行照入口行（.tm-entry）的尺寸画：图标放在浅灰圆角方块里、行高 64、左右 16（宽屏也不放大到 20），
+   和上面紧挨着的入口对齐成一列。选择器多带两个类，压过公共样式宽屏下的 .tm-details.tm-card > summary */
+.tm-details.tm-card.pg-home-grafana > summary {
+  gap: 12px;
+  min-height: 64px;
+  padding: 11px 16px;
+}
+
+.pg-home-grafana > summary .tm-details-icon {
+  flex: none;
+  box-sizing: border-box;
+  width: 36px;
+  height: 36px;
+  padding: 8px;
+  border-radius: 11px;
+  background: var(--tm-surface-2);
+}
+
+.pg-home-grafana .tm-details-title {
+  font-size: 15.5px;
 }

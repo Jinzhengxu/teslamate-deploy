@@ -17,7 +17,8 @@ const CABLES = { GB_AC: "国标交流", GB_DC: "国标直流", IEC: "Type 2", SA
 
 // 一次查询取齐这次充电的全部汇总。数字的算法照面板：
 //   时长 = charges 里最后一条减第一条；充入 = 过程表的值，没有（没结束）时取 charges 里的最大值；
-//   效率 = min(充入 / 用电, 1)；相数 = 面板的 determine_phases 变量；平均功率 = 按相数 × 电流 × 电压算（交流），直流用上报的功率；
+//   效率 = min(充入 / 用电, 1)；相数 = 面板的 determine_phases 变量；平均功率 = 按相数 × 电流 × 电压算（交流），直流用上报的功率，
+//   最高功率取同一个算法和上报功率里大的那个；
 //   车外温度 = charges 的平均值（面板的 Ø Outdoor Temperature）
 function detailSql(id) {
   return `with c as (
@@ -53,10 +54,11 @@ ph as (
   ) x
 ),
 pw as (
-  select avg(case when charger_phases >= 1
-                  then coalesce(ph.phases * charger_actual_current * charger_voltage / 1000.0, charger_power)
-                  else charger_power end) as power_avg
-  from charges cross join ph where charging_process_id = ${id}
+  select avg(x.kw) as power_avg, max(x.kw) as power_max_calc
+  from (select case when charger_phases >= 1
+                    then coalesce(ph.phases * charger_actual_current * charger_voltage / 1000.0, charger_power)
+                    else charger_power end as kw
+        from charges cross join ph where charging_process_id = ${id}) x
 )
 select
   cp.id, cp.start_date, cp.end_date, cp.duration_min,
@@ -77,7 +79,9 @@ select
   coalesce(cp.end_battery_level, c.last_soc) as end_soc,
   coalesce(convert_km(cp.start_\${preferred_range}_range_km, '$length_unit'), c.first_range) as start_range,
   coalesce(convert_km(cp.end_\${preferred_range}_range_km, '$length_unit'), c.last_range) as end_range,
-  c.temp_avg, c.power_max, pw.power_avg, ph.phases,
+  -- 最高功率和平均值出自同一组数：车上报的 charger_power 是整数 kW，32 A 满功率的交流充电平均 7.2、上报最高却只有 7，
+  -- 只取上报值会出现「平均比最高还大」
+  c.temp_avg, greatest(c.power_max, pw.power_max_calc) as power_max, pw.power_avg, ph.phases,
   case when nullif(c.phases_mode, 0) is null then 'DC' else 'AC' end as charge_type,
   coalesce(c.tesla, false) as supercharger,
   c.cable, c.current_max, c.pilot_max, c.volt_avg, coalesce(c.heater, false) as heater,
@@ -181,13 +185,25 @@ function heroHtml(r, state) {
   );
 }
 
+// 时长按钟表截断（和 Grafana 充电详情的 Duration、行程详情的「用时」一样）：01:58:37 写「1小时58分」，
+// 不到一小时带秒「47分42秒」。四舍五入到分钟会比 Grafana 多出 1 分钟
+function clockDuration(sec) {
+  const s = Math.floor(+sec);
+  if (s < 60) return `${s}秒`;
+  if (s < 3600) return `${Math.floor(s / 60)}分${s % 60 ? (s % 60) + "秒" : ""}`;
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return h >= 24 ? fmt.duration(s / 60) : `${h}小时${m ? m + "分" : ""}`;
+}
+
 function statsHtml(r, state) {
-  const dur = r.duration_s != null ? r.duration_s / 60 : r.duration_min;
+  const dur = r.duration_s != null ? clockDuration(r.duration_s) : fmt.duration(r.duration_min);
   const socDelta = r.start_soc != null && r.end_soc != null ? r.end_soc - r.start_soc : null;
   const rangeDelta = r.start_range != null && r.end_range != null ? r.end_range - r.start_range : null;
   const loss = r.energy_used != null && r.energy_added != null ? Math.max(0, r.energy_used - r.energy_added) : null;
-  // 时长的起止按 charges 的第一条、最后一条（和面板算时长的口径一样）；没结束的只算到最后一条记录
-  const span = spanText(r.first_date ?? r.start_date, r.last_date ?? r.end_date);
+  // 时长的起止按 charges 的第一条、最后一条（和面板算时长的口径一样），和充电列表按过程起止算的时长可能差一两分钟。
+  // 已结束的头部已经写了起止，小字只说明口径；没结束的写出算到了哪一条记录
+  const span = state === "done" ? (r.duration_s != null ? "按充电记录的起止算" : null) : spanText(r.first_date ?? r.start_date, r.last_date);
   return ui.stats(
     [
       {
@@ -209,7 +225,7 @@ function statsHtml(r, state) {
       {
         label: "时长",
         icon: "clock-outline",
-        value: fmt.duration(dur),
+        value: dur,
         sub: state === "done" ? span : span && `${span}（${state === "charging" ? "最新" : "最后"}一条记录）`
       },
       {
@@ -225,7 +241,15 @@ function statsHtml(r, state) {
         unit: fmt.unit.len,
         sub: r.start_range != null && r.end_range != null ? `${fmt.num(r.start_range, 0)}→${fmt.len(r.end_range, 0)}` : null
       },
-      { label: "平均功率", icon: "lightning-bolt", value: r.power_avg, digits: 1, unit: "kW", sub: r.power_max != null ? `最高 ${fmt.kw(r.power_max)}` : null },
+      // 最高功率按算出来的值时（交流）和平均值一样写一位小数：取整会把 7.3 写成 7，又比平均的 7.2 小了
+      {
+        label: "平均功率",
+        icon: "lightning-bolt",
+        value: r.power_avg,
+        digits: 1,
+        unit: "kW",
+        sub: r.power_max != null ? `最高 ${fmt.kw(r.power_max, Number.isInteger(+r.power_max) ? 0 : 1)}` : null
+      },
       { label: "车外温度", icon: "thermometer", value: r.temp_avg, digits: 1, unit: fmt.unit.temp, sub: "充电时的平均值" }
     ],
     { cols: 2 }

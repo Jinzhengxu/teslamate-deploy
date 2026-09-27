@@ -336,8 +336,8 @@ export async function render(ctx) {
     { cols: 2 }
   );
 
-  const acPct = acdcTotal > 0 ? (acdc.AC / acdcTotal) * 100 : 0;
-  const dcPct = 100 - acPct;
+  // 两边合起来是全部，用 fmt.shares 分（各自四舍五入可能加起来是 101%）
+  const [acPct, dcPct] = fmt.shares([acdc.AC, acdc.DC]);
   const acdcCard =
     acdcTotal > 0
       ? ui.card(
@@ -345,13 +345,13 @@ export async function render(ctx) {
               <span class="tm-strong">交流 / 直流</span>
               <span class="tm-note">从电网取的电量</span>
             </div>
-            <div class="pg-battery-split" role="img" aria-label="${`交流 ${fmt.share(acPct)}，直流 ${fmt.share(dcPct)}`}">
+            <div class="pg-battery-split" role="img" aria-label="${`交流 ${acPct}，直流 ${dcPct}`}">
               ${acdc.AC > 0 ? html`<span class="is-ac" style="flex:${acdc.AC.toFixed(3)}"></span>` : ""}
               ${acdc.DC > 0 ? html`<span class="is-dc" style="flex:${acdc.DC.toFixed(3)}"></span>` : ""}
             </div>
             <div class="pg-battery-split-legend">
-              <div><i class="is-ac"></i><span>交流（慢充）</span><b>${fmt.kwh(acdc.AC, 1)}</b><em>${fmt.share(acPct)}</em></div>
-              <div><i class="is-dc"></i><span>直流（快充）</span><b>${fmt.kwh(acdc.DC, 1)}</b><em>${fmt.share(dcPct)}</em></div>
+              <div><i class="is-ac"></i><span>交流（慢充）</span><b>${fmt.kwh(acdc.AC, 1)}</b><em>${acPct}</em></div>
+              <div><i class="is-dc"></i><span>直流（快充）</span><b>${fmt.kwh(acdc.DC, 1)}</b><em>${dcPct}</em></div>
             </div>`
         )
       : "";
@@ -473,9 +473,11 @@ export async function render(ctx) {
         type: "scatter",
         name: "推算容量",
         data: pts,
-        symbolSize: 7,
+        // 点用不透明的 c1（半透明的点贴在卡片底色上对比度不到 3:1，和图例色块也对不上），
+        // 重叠的地方靠一圈卡片底色的描边分开
+        symbolSize: 6,
         z: 2,
-        itemStyle: { color: "@c1/0.6" },
+        itemStyle: { color: "@c1", borderColor: "@surface", borderWidth: 1 },
         markLine:
           capNew != null
             ? {

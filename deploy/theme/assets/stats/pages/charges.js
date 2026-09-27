@@ -30,9 +30,8 @@ const COSTS = [
   { value: "none", label: "未计费" }
 ];
 
-// 筛选区展开与否、「再显示」到了第几条放模块里：改筛选会重画整页（新 root），看完详情后退回来也要接着原来的位置
+// 筛选区展开与否放模块里：改筛选会重画整页（新 root）。「再显示」到了第几条由 ui.pager 记在历史记录里
 let filterOpen = false;
-let shownFor = { key: "", n: PAGE };
 
 // ---------------------------------------------------------------- 筛选参数（URL → 校验过的值）
 
@@ -358,7 +357,8 @@ function table(rows, ctx) {
         { key: "cost_per_kwh", label: "元⁠/⁠度", align: "right", fmt: (v) => (v != null ? fmt.num(v, 2) : null) },
         { key: "soc", label: "电量", align: "right", fmt: (v, r) => (r.start_soc != null && r.end_soc != null ? `${r.start_soc}→${r.end_soc}%` : null) },
         { key: "range_added", label: `续航增加 ${u.len}`, align: "right", fmt: (v) => (v != null ? fmt.signed(v, 0) : null) },
-        { key: "power_avg", label: "平均功率 kW", align: "right", fmt: (v) => fmt.num(v, 1) },
+        // 面板 Charges 表的 Ø Power 是「充入 ÷ 时长」，和详情页按电压电流算的平均功率不是一回事，换个名字免得对不上
+        { key: "power_avg", label: "每小时充入 kWh", align: "right", fmt: (v) => fmt.num(v, 1) },
         {
           key: "rate",
           label: `充电速度 ${u.speed}`,
@@ -449,19 +449,14 @@ export async function render(ctx) {
   ui.onSegment(ctx.root, "view", (v) => ctx.setQuery({ view: v === "table" ? "table" : null }));
 
   // ---- 列表：先画 50 条，「再显示」每次加 50 条（数据已经全在手里：汇总要用全部行）。
-  // 看完详情退回来时接着原来显示到的位置（第一段直接画 n 条）
-  const key = location.pathname + location.search;
-  const first = shownFor.key === key ? Math.min(shownFor.n, rows.length) : PAGE;
-  shownFor = { key, n: first };
+  // 看完详情退回来时 ui.pager 自己接着加到原来显示到的位置
   const dayTotals = new Map(groupByDay(rows).map((g) => [g.day, g]));
   const pager = ui.pager(ctx.root.querySelector("#pg-charges-list"), {
     total: rows.length,
     page: PAGE,
     noun: "次充电",
     load: (offset) => {
-      const n = offset === 0 ? first : PAGE;
-      const part = rows.slice(offset, offset + n);
-      shownFor = { key, n: offset + part.length };
+      const part = rows.slice(offset, offset + PAGE);
       return { html: f.view === "table" ? table(part, ctx) : html`${dayGroups(part, dayTotals, ctx)}`, count: part.length };
     }
   });

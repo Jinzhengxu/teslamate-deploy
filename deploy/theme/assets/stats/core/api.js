@@ -292,6 +292,20 @@ async function getJson(url) {
   return { res, body };
 }
 
+// 页面模块、页面 CSS、ECharts / Leaflet 这类静态文件加载失败时，浏览器只给一个笼统的错误（Failed to fetch dynamically
+// imported module、script onerror），分不出是断网还是登录过期（Caddy 对所有请求回 401 登录页）。
+// 再用 HEAD 探一次同一个地址：401 换成「登录已过期」（错误卡片显示「重新登录」），连不上换成网络错误，别的照原样返回
+export async function loadError(url, err) {
+  let res;
+  try {
+    res = await fetch(url, { method: "HEAD", credentials: "same-origin", cache: "no-store" });
+  } catch {
+    return new ApiError("网络连接失败", { network: true });
+  }
+  if (res.status === 401) return new ApiError("登录已过期", { status: 401, auth: true });
+  return err;
+}
+
 // 一次 batch 里不同范围的查询会并发发出几个请求：第一次打开、或者 uid 失效要重取时，只查一次数据源
 let dsPending = null;
 

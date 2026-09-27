@@ -81,6 +81,26 @@ export function share(v) {
   return p > 0 && p < 0.5 ? "<1%" : p >= 99.5 && p < 100 ? ">99%" : pct(p);
 }
 
+// 一组互斥、合起来是全部的占比（充到多少的几档、交流 / 直流、各状态的时长）：values 是各部分的量（次数、秒数…），
+// 返回和 values 一一对应的文字。各自四舍五入加起来常常是 99% 或 101%，这里用最大余数法：先都向下取整，
+// 差的那几个百分点按小数部分从大到小各补 1，合计正好 100%。写法和 share 一样：分到 0 的写「<1%」、分到 100 的写「>99%」，
+// 量是 0（或不是数）的写「0%」；全部加起来是 0 时都写「—」
+export function shares(values) {
+  const v = values.map((x) => (ok(x) && +x > 0 ? +x : 0));
+  const total = v.reduce((a, b) => a + b, 0);
+  if (!(total > 0)) return v.map(() => DASH);
+  const raw = v.map((x) => (x / total) * 100);
+  const out = raw.map(Math.floor);
+  let left = 100 - out.reduce((a, b) => a + b, 0);
+  const order = raw.map((x, i) => [x - out[i], i]).sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+  for (const [, i] of order) {
+    if (left <= 0) break;
+    out[i]++;
+    left--;
+  }
+  return out.map((n, i) => (v[i] > 0 && n === 0 ? "<1%" : n === 100 && raw[i] < 100 ? ">99%" : pct(n)));
+}
+
 // 显式写正负号的变化量：正数「+」、负数「−」（U+2212，不是连字符），四舍五入成 0 的不带符号：+2.1 / −3.1 / 0。
 // f：小数位数；或者格式化绝对值的函数，要带单位时用（signed(v, (x) => fmt.len(x, 0)) →「−12 km」）
 export function signed(v, f = 0) {
@@ -309,16 +329,6 @@ export function duration(min) {
   if (days > 0) return `${sign}${days}天${hours ? hours + "小时" : ""}`;
   if (hours > 0) return `${sign}${hours}小时${mins ? mins + "分" : ""}`;
   return `${sign}${mins}分`;
-}
-
-// 更短的写法，给坐标轴、窄表格用：45分 / 1.5小时 / 2.3天
-export function durationShort(min) {
-  if (!ok(min)) return DASH;
-  const m = +min;
-  const a = Math.abs(m);
-  if (a < 60) return `${num(m, 0)}分`;
-  if (a < 1440) return `${num(m / 60, a < 600 ? 1 : 0)}小时`;
-  return `${num(m / 1440, a < 14400 ? 1 : 0)}天`;
 }
 
 // 累计驾驶时间（行程页的「驾驶时长」、驾驶统计「共统计了 …」、时间线、旅程）按小时说：「2天5小时」容易被读成日历上的两天，

@@ -805,8 +805,15 @@ EOF
   else
     printf '                 用户名 %s   密码沿用上次（忘了就：TM_WEB_PASSWORD=新密码 bash deploy/deploy.sh）\n' "$WEB_USER"
   fi
+  # 统计页由换肤代理提供，换肤关着或没生效时这个地址会落到 TeslaMate 的 404，就不给链接了
+  if [[ "$THEME_STATUS" == on ]]; then
+    printf '     统计        https://%s/stats/    %s行程、充电、电池等统计图表%s\n' "$DOMAIN" "$C_DIM" "$C_RESET"
+  elif [[ "$THEME_STATUS" == failed ]]; then
+    printf '     统计        %s换肤没生效，统计页暂时打不开（见上方 ⚠）%s\n' "$C_DIM" "$C_RESET"
+  else
+    printf '     统计        %s随换肤一起关闭（TM_THEME=on 打开）%s\n' "$C_DIM" "$C_RESET"
+  fi
   cat <<EOF
-     统计        https://${DOMAIN}/stats/    ${C_DIM}行程、充电、电池等统计图表（换肤开着时才有）${C_RESET}
      Grafana     https://${DOMAIN}/grafana   ${C_DIM}登录后直接进，不用再输密码${C_RESET}
      退出登录    https://${DOMAIN}/_auth/logout   ${C_DIM}只退出当前设备；重置密码会让所有设备都退出${C_RESET}
 

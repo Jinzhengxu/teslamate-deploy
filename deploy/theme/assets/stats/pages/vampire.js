@@ -257,7 +257,7 @@ function statesHref(ctx, r) {
 // 列表标题（列表行的时间段写法）：开始那天不带星期（手机上右边还有数值列）；
 // 时间段放不下时从「–」后面折行，不把「次日」拆开
 function spanTitle(r) {
-  return html`<span class="pg-vd-nb">${fmt.shortDay(r.start_date)} ${fmt.time(r.start_date)}–</span><span class="pg-vd-nb">${endTime(r.start_date, r.end_date)}</span>`;
+  return html`<span class="tm-nowrap">${fmt.shortDay(r.start_date)} ${fmt.time(r.start_date)}–</span><span class="tm-nowrap">${endTime(r.start_date, r.end_date)}</span>`;
 }
 
 // 表格、提示框里两头都带日期的时间段：同一天「9月21日 14:05–16:57」，第二天「9月21日 23:06–次日 02:52」，
@@ -277,7 +277,7 @@ const period = (a, b) => periodParts(a, b).join("");
 // 免得最后一列要横向滚动才看得到
 function periodCell(a, b) {
   const [head, gap, tail] = periodParts(a, b);
-  return html`<span class="pg-vd-nb">${head}</span>${gap}<span class="pg-vd-nb">${tail}</span>`;
+  return html`<span class="tm-nowrap">${head}</span>${gap}<span class="tm-nowrap">${tail}</span>`;
 }
 
 // 续航损失：按距离的位数，掉了写「−」（减号，不是连字符）。

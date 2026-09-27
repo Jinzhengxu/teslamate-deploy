@@ -2,9 +2,12 @@
  * 各页面共用的 SQL 片段和小工具。
  *
  * 地点名称：有地理围栏（家、公司）就用围栏名，否则用地址。g、a 是 SQL 里 geofences、addresses 表的别名。
- *   placeSql      短名字，列表行、标题用：地址自己的名字 → 路名门牌 → 街道 → 区县 → 城市
- *   placeFullSql  带城市，详情页用；和 Grafana 面板的写法一样，只是中文路名和门牌之间不加空格
- * 两个都可能是 NULL（没有反查到地址），页面自己显示「未知地点」。
+ *   placeSql         短名字，列表行、标题用：地址自己的名字 → 路名门牌 → 街道 → 区县 → 城市
+ *   placeFullSql     带城市，详情页用；和 Grafana 面板的写法一样，只是中文路名和门牌之间不加空格
+ *   panelAddressSql  逐字照抄 Grafana 面板的写法（路名和门牌之间有空格），只给「照面板的规则搜索地点」用
+ * 前两个都可能是 NULL（没有反查到地址），页面自己显示「未知地点」。
+ *
+ * 软件版本：shortVersion(v) 去掉版本号后面的构建号，releaseNotes(v) 这个版本的更新说明链接（行程时间线、软件更新两页用）
  *
  * 没有结束时间的充电 / 行驶是正在进行，还是中途断掉了（充电页、行程页、详情页、首页、时间线、状态页共用同一个口径）：
  *   chargeState(row) / driveState(row)      已经查出最后一条记录的时间时，在 JS 里判断
@@ -23,7 +26,25 @@ export function placeFullSql(g, a) {
   return `COALESCE(${g}.name, NULLIF(CONCAT_WS(', ', COALESCE(${a}.name, NULLIF(CONCAT(${a}.road, ${a}.house_number), '')), ${a}.city), ''))`;
 }
 
+// 行程 / 时间线的地点搜索要和 Grafana 面板搜到的一样，所以写法逐字照抄面板（围栏名，或「地名 / 路名 门牌, 城市」）。
+// 显示用 placeFullSql，别拿它显示：中文路名和门牌之间会多一个空格
+export function panelAddressSql(g, a) {
+  return `COALESCE(${g}.name, CONCAT_WS(', ', COALESCE(${a}.name, nullif(CONCAT_WS(' ', ${a}.road, ${a}.house_number), '')), ${a}.city))`;
+}
+
 export const UNKNOWN_PLACE = "未知地点";
+
+// ---------------------------------------------------------------- 软件版本
+
+// 「2026.32.1 429934134f」→「2026.32.1」（面板也是取空格前面那段）
+export function shortVersion(v) {
+  return v ? String(v).split(" ")[0] : null;
+}
+
+// 版本号只放行「数字.数字…」这种，别把数据库里的任意文本拼进链接
+export function releaseNotes(v) {
+  return v && /^\d{4}\.\d{1,3}(\.\d{1,3}){0,3}$/.test(v) ? `https://www.notateslaapp.com/software-updates/version/${v}/release-notes` : null;
+}
 
 // ---------------------------------------------------------------- 进行中 / 中途断掉
 

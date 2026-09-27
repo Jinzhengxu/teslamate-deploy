@@ -77,6 +77,10 @@
   --tm-violet-soft: rgba(124, 58, 237, 0.11);
   --tm-cyan: #0e7490;
   --tm-cyan-soft: rgba(8, 145, 178, 0.12);
+  /* 绿、琥珀色标签（ui.pill）的字：12px 的小字压在浅绿 / 浅黄底上，-text 那一档只有 4.3～4.4:1，再深一档才过 4.5:1。
+     暗色下 -text 本来就在 5:1 以上，照用 */
+  --tm-green-pill: #166534;
+  --tm-amber-pill: #92400e;
   --tm-skeleton: rgba(17, 24, 39, 0.06);
   --tm-skeleton-hi: rgba(17, 24, 39, 0.02);
   /* 页面左右留白：和 TeslaMate 的 main.section 一致 */
@@ -132,6 +136,8 @@ html[data-theme="dark"] {
   --tm-violet-soft: rgba(167, 139, 250, 0.16);
   --tm-cyan: #22d3ee;
   --tm-cyan-soft: rgba(34, 211, 238, 0.14);
+  --tm-green-pill: var(--tm-green-text);
+  --tm-amber-pill: var(--tm-amber-text);
   --tm-skeleton: rgba(255, 255, 255, 0.06);
   --tm-skeleton-hi: rgba(255, 255, 255, 0.02);
   color-scheme: dark;
@@ -529,6 +535,11 @@ html:not([data-theme="dark"]) .tm-brand img {
   align-items: center;
   gap: 12px;
   min-width: 0;
+}
+
+/* 换页后外壳把焦点放到标题上（tabindex=-1，给读屏念新页面用），标题不是能点的东西，不画焦点框 */
+.tm-title:focus {
+  outline: none;
 }
 
 .tm-title {
@@ -1983,12 +1994,12 @@ a.tm-row:active {
 
 .tm-pill.is-green {
   background: var(--tm-green-soft);
-  color: var(--tm-green-text);
+  color: var(--tm-green-pill);
 }
 
 .tm-pill.is-amber {
   background: var(--tm-amber-soft);
-  color: var(--tm-amber-text);
+  color: var(--tm-amber-pill);
 }
 
 .tm-pill.is-red {
@@ -2381,6 +2392,17 @@ html[data-theme="dark"] .tm-map .leaflet-tile-pane {
 .tm-map .tm-map-btn a .tm-svg {
   width: 20px;
   height: 20px;
+}
+
+/* 触屏上按钮放大到 40px，手指好按（桌面鼠标用 34px 就够，地图上少挡一点） */
+@media (pointer: coarse) {
+  .tm-map .leaflet-control-zoom a,
+  .tm-map.leaflet-touch .leaflet-control-zoom a,
+  .tm-map .tm-map-btn a {
+    width: 40px;
+    height: 40px;
+    line-height: 40px;
+  }
 }
 
 .tm-map .leaflet-control-zoom a:hover,
@@ -2834,20 +2856,24 @@ a.tm-neighbor:active {
   min-width: 0;
 }
 
-/* 名字最多两行：超充站名字的区别在后半截，截断成「特斯拉超级充电站（…」就分不出来了 */
 .tm-rank-name {
-  display: -webkit-box;
   flex: 1 1 auto;
   min-width: 0;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
   color: var(--tm-text);
   font-size: 14.5px;
   font-weight: 600;
   line-height: 1.35;
   overflow-wrap: anywhere;
+}
+
+/* 名字最多两行：超充站名字的区别在后半截，截断成「特斯拉超级充电站（…」就分不出来了。
+   截断放在里面这层：外层链接不能 overflow: hidden，触屏上往外扩的命中区（::after）才不会被裁掉 */
+.tm-rank-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 a.tm-rank-name:hover {
@@ -3367,6 +3393,55 @@ a.tm-rank-name:hover {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 触屏上的命中区至少 40px：页头的返回、换车，小节标题右边的「全部」这类链接，排行榜的名字，本身都只有 20～30px 高。
+   用透明的 ::after 往四周扩出去，不改排版（页面里自己的小链接加 tm-hit 也一样）。
+   分段选择、⋯ 按钮直接放大：分段选择的容器会横向滚动（overflow），扩出去的部分会被裁掉 */
+@media (pointer: coarse) {
+  .tm-back,
+  .tm-car-btn,
+  a.tm-section-action,
+  a.tm-rank-name,
+  .tm-hit {
+    position: relative;
+  }
+
+  .tm-back::after,
+  a.tm-section-action::after,
+  a.tm-rank-name::after,
+  .tm-hit::after {
+    content: "";
+    position: absolute;
+    inset: -10px -6px;
+  }
+
+  /* 名字下面紧挨着的横条是定位元素，后画的会盖住扩出去的部分 */
+  a.tm-rank-name {
+    z-index: 1;
+  }
+
+  /* 下面 8px 就是范围条：往下只扩 5px，不压到范围条的按钮上 */
+  .tm-car-btn::after {
+    content: "";
+    position: absolute;
+    inset: -6px 0 -5px;
+  }
+
+  .tm-icon-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .tm-seg button {
+    min-width: 40px;
+    min-height: 40px;
+  }
+}
+
+/* 这一段不在中间断行：放不下时整段折到下一行（「9月22日 18:05–」「次日 07:40」各包一个，就只会从「–」后面折） */
+.tm-nowrap {
   white-space: nowrap;
 }
 

@@ -10,7 +10,7 @@ import * as api from "../core/api.js";
 import * as fmt from "../core/format.js";
 import { DRIVE_ITEM_SQL, driveItem, lenText, lenDigits, timeSpan, endTime, metaItem } from "./_drive-item.js";
 import { CHARGE_ITEM_SQL, chargeItem } from "./_charge-item.js";
-import { placeSql, UNKNOWN_PLACE, LIVE_SQL } from "./_shared.js";
+import { placeSql, placeFullSql, panelAddressSql, UNKNOWN_PLACE, LIVE_SQL, shortVersion, releaseNotes } from "./_shared.js";
 
 export const title = "时间线";
 export const range = { default: "7d" };
@@ -31,14 +31,13 @@ const TYPE_KEYS = TYPES.map((t) => t.key);
 // 同一时刻开始的两条（极少见）按这个顺序排
 const TYPE_RANK = { update: 0, missing: 1, charge: 2, drive: 3, park: 4 };
 
-// 面板搜索地址用的写法（围栏名，或「地名 / 路名 门牌, 城市」）。搜索时这个和列表上显示的短地名都匹配
-const FULL = (g, a) =>
-  `COALESCE(${g}.name, CONCAT_WS(', ', COALESCE(${a}.name, nullif(CONCAT_WS(' ', ${a}.road, ${a}.house_number), '')), ${a}.city))`;
-
 // ---------------------------------------------------------------- SQL
 
+// 搜索地点时匹配两样：列表上显示的短地名，和面板搜索用的完整地址（*_panel，_shared.js panelAddressSql，
+// 这样搜到的和 Grafana 面板一样）。展开明细里显示的完整地址（*_full）用 placeFullSql，和行程、充电详情页写法一致
+
 // 行驶：_drive-item.js 的 SQL 外面再包一层，补上面板搜索用的完整地址
-const DRIVES_SQL = `select x.*, ${FULL("sg", "sa")} as start_full, ${FULL("eg", "ea")} as end_full
+const DRIVES_SQL = `select x.*, ${panelAddressSql("sg", "sa")} as start_panel, ${panelAddressSql("eg", "ea")} as end_panel
 from (${DRIVE_ITEM_SQL("$__timeFilter(d.start_date)", { incomplete: true })}) x
 join drives d on d.id = x.id
 left join addresses sa on sa.id = d.start_address_id
@@ -47,7 +46,7 @@ left join geofences sg on sg.id = d.start_geofence_id
 left join geofences eg on eg.id = d.end_geofence_id`;
 
 // 充电：同上。_charge-item.js 默认不含充进 0 kWh 的充电，和面板的 charge_energy_added > 0 一致
-const CHARGES_SQL = `select x.*, ${FULL("g", "a")} as place_full
+const CHARGES_SQL = `select x.*, ${panelAddressSql("g", "a")} as place_panel
 from (${CHARGE_ITEM_SQL("$__timeFilter(cp.start_date)", { incomplete: true })}) x
 join charging_processes cp on cp.id = x.id
 left join addresses a on a.id = cp.address_id
@@ -89,7 +88,7 @@ w as (
 select
   w.end_date as start_date, w.next_start as end_date,
   extract(epoch from w.next_start - w.end_date) / 60 as duration_min,
-  ${placeSql("g", "ad")} as place, ${FULL("g", "ad")} as place_full,
+  ${placeSql("g", "ad")} as place, ${placeFullSql("g", "ad")} as place_full, ${panelAddressSql("g", "ad")} as place_panel,
   w.end_geofence_id as geofence_id, w.latitude, w.longitude,
   w.end_soc as start_soc, w.next_soc as end_soc,
   convert_km(w.end_odo::numeric, '$length_unit') as odometer,
@@ -110,7 +109,8 @@ const MISSING_SQL = `select
   t1.end_date + interval '1 second' as start_date, t2.start_date as end_date,
   extract(epoch from t2.start_date - t1.end_date) / 60 as duration_min,
   ${placeSql("g1", "a1")} as start_place, ${placeSql("g2", "a2")} as end_place,
-  ${FULL("g1", "a1")} as start_full, ${FULL("g2", "a2")} as end_full,
+  ${placeFullSql("g1", "a1")} as start_full, ${placeFullSql("g2", "a2")} as end_full,
+  ${panelAddressSql("g1", "a1")} as start_panel, ${panelAddressSql("g2", "a2")} as end_panel,
   t1.end_geofence_id as start_geofence_id, t2.start_geofence_id as end_geofence_id,
   p1.latitude as start_lat, p1.longitude as start_lng, p2.latitude as end_lat, p2.longitude as end_lng,
   p1.battery_level as start_soc, p2.battery_level as end_soc,
@@ -150,6 +150,14 @@ function readFilters(q) {
   return { types, text };
 }
 
+// 页头「在 Grafana 中打开」带上同样的筛选。多选时 Grafana 要重复的 var-action_filter 参数，链接工具只能带一个值，只选一类时才带
+function grafanaVars(f) {
+  return {
+    "var-action_filter": f.types.length === 1 ? TYPES.find((t) => t.key === f.types[0]).grafana : null,
+    "var-text_filter": f.text || null
+  };
+}
+
 // ---------------------------------------------------------------- 数据 → 事件
 
 const lower = (...xs) => xs.filter((x) => x != null && x !== "").join("\n").toLowerCase();
@@ -160,20 +168,20 @@ function toEvents(d) {
   const out = [];
   const live = d.live[0] || null;
   for (const r of d.drives) {
-    out.push({ type: "drive", start: r.start_date, end: r.end_date, row: r, hay: lower(r.start_place, r.end_place, r.start_full, r.end_full) });
+    out.push({ type: "drive", start: r.start_date, end: r.end_date, row: r, hay: lower(r.start_place, r.end_place, r.start_panel, r.end_panel) });
   }
   for (const r of d.charges) {
-    out.push({ type: "charge", start: r.start_date, end: r.end_date, row: r, hay: lower(r.place, r.place_full) });
+    out.push({ type: "charge", start: r.start_date, end: r.end_date, row: r, hay: lower(r.place, r.place_panel) });
   }
   for (let r of d.park) {
     // 最后那段停车之后车正在开 / 正在充：停车到它开始为止（行对象和缓存共用，复制一份再改）
     if (r.end_date == null && live && live.start_date > r.start_date) {
       r = { ...r, end_date: live.start_date, duration_min: (live.start_date - r.start_date) / 60e3, live: live.kind };
     }
-    out.push({ type: "park", start: r.start_date, end: r.end_date, row: r, hay: lower(r.place, r.place_full) });
+    out.push({ type: "park", start: r.start_date, end: r.end_date, row: r, hay: lower(r.place, r.place_panel) });
   }
   for (const r of d.missing) {
-    out.push({ type: "missing", start: r.start_date, end: r.end_date, row: r, hay: lower(r.start_place, r.end_place, r.start_full, r.end_full) });
+    out.push({ type: "missing", start: r.start_date, end: r.end_date, row: r, hay: lower(r.start_place, r.end_place, r.start_panel, r.end_panel) });
   }
   for (const r of d.updates) {
     out.push({ type: "update", start: r.start_date, end: r.end_date, row: r, hay: lower(r.version) });
@@ -207,11 +215,7 @@ function parkMinutes(r) {
 
 export async function render(ctx) {
   const f = readFilters(ctx.query);
-  ctx.setGrafanaVars({
-    // 多选时 Grafana 要重复的 var-action_filter 参数，链接工具只能带一个值，只选一类时才带
-    "var-action_filter": f.types.length === 1 ? TYPES.find((t) => t.key === f.types[0]).grafana : null,
-    "var-text_filter": f.text || null
-  });
+  ctx.setGrafanaVars(grafanaVars(f));
   ctx.root.classList.add("pg-tl");
 
   ui.render(ctx.root, ui.skeleton(["stats", "list"]));
@@ -254,8 +258,9 @@ export async function render(ctx) {
   const chipsEl = ctx.root.querySelector("#pg-tl-chips");
   const input = ctx.root.querySelector("#pg-tl-q");
 
-  // 搜索框边打边筛，还没按回车时 URL 里没有这个字，所以另外记着
+  // 正在按哪段文字筛（f.text 是 URL 里的 q，打字时由 setText 跟上）；timer：打字的防抖
   let text = f.text;
+  let timer = 0;
 
   const draw = () => {
     const byText = matchText(all, text);
@@ -301,65 +306,71 @@ export async function render(ctx) {
       if (!k) next = [];
       else if (!f.types.length) next = [k];
       else next = f.types.includes(k) ? f.types.filter((x) => x !== k) : [...f.types, k];
-      ctx.setQuery({ types: next.length && next.length < TYPE_KEYS.length ? next.join(",") : null, q: text || null });
+      ctx.setQuery({ types: next.length && next.length < TYPE_KEYS.length ? next.join(",") : null });
       return;
     }
     if (e.target.closest("[data-tl-clear]")) {
-      // 搜索框里打了字但没按回车时 URL 里没有 q，setQuery 什么都不会变（也不重画），得在这里自己清
-      if (f.types.length || f.text) ctx.setQuery({ types: null, q: null });
+      // 只有搜索词时 setText 就够了（不用重画整页，URL 里的 q 它会去掉）；有类型要换一份类型标签，重画整页
+      if (f.types.length) ctx.setQuery({ types: null, q: null });
       else {
         input.value = "";
-        text = "";
-        draw();
+        setText("");
       }
     }
   });
 
-  // 搜索：边打边筛（数据都在手上）；回车再写进 URL，返回这一页时还在
-  let timer = 0;
+  // 搜索：边打边筛（数据都在手上），同时把 q 写进 URL 和筛选条的摘要。URL 只用 history.replaceState 改，不走 ctx.setQuery：
+  // 那会重画整页，正在打字的输入框丢焦点。这样不管之后是按 Tab、点一行、点「上一段」还是刷新，URL、摘要和列表都是同一个词
+  // （以前回车才写进 URL，删光后没回车就离开时 q 还留着，别的控件一重画又筛回去了）
+  const setText = (next) => {
+    clearTimeout(timer);
+    if (next !== text && input.isConnected) {
+      text = next;
+      draw();
+    }
+    syncQuery(next);
+  };
+  // 只改 URL、摘要和 Grafana 链接，不动列表
+  const syncQuery = (next) => {
+    // 离开这一页（或整页重画）时输入框被拿掉也会触发 blur，这时 URL 已经是别的页了，不能再写 q
+    if (next === f.text || ctx.signal.aborted || !input.isConnected) return;
+    f.text = next;
+    const u = new URL(location.href);
+    if (next) u.searchParams.set("q", next);
+    else u.searchParams.delete("q");
+    // 列表换了一份，ui.pager 记在这条历史记录上的「已显示几条」不再作数（和 app.js 的 setQuery 一样）
+    history.replaceState({ ...history.state, pager: undefined }, "", u);
+    ctx.setGrafanaVars(grafanaVars(f));
+    syncBar();
+  };
+  // 筛选条摘要（「筛选 · 1 含「家」 清除」）按新的 f 重做。整个筛选条不能重画（输入框在里面），只换上面那一行；
+  // 展开的面板还是原来那个，按钮上的 aria-controls、aria-expanded 照旧
+  const syncBar = () => {
+    const bar = ctx.root.querySelector(".tm-filter-bar");
+    const tpl = document.createElement("template");
+    tpl.innerHTML = String(filterBar(f, ctx));
+    const fresh = tpl.content.querySelector(".tm-filter-bar");
+    const oldBtn = bar.querySelector("[data-tm-filter-toggle]");
+    const btn = fresh.querySelector("[data-tm-filter-toggle]");
+    for (const k of ["aria-controls", "aria-expanded"]) btn.setAttribute(k, oldBtn.getAttribute(k));
+    bar.replaceWith(fresh);
+  };
   input.addEventListener("input", () => {
     clearTimeout(timer);
-    timer = setTimeout(() => {
-      text = input.value.trim().slice(0, 60);
-      draw();
-    }, 150);
+    timer = setTimeout(() => setText(input.value.trim().slice(0, 60)), 150);
   });
   ctx.onCleanup(() => clearTimeout(timer));
-  // 搜索框清空了（点「×」、按 Esc，或者手动删光后离开输入框）：URL 里的 q 也去掉，不然筛选条上还写着「含…」，
-  // 返回这一页时又筛回去。手动删光的不在上面边打边筛时处理：那里重画整页，还在打字的输入框会丢焦点
-  const dropQ = () => {
-    if (!input.value.trim() && f.text) ctx.setQuery({ q: null });
-  };
-  input.addEventListener("search", dropQ);
-  // 手动删光的，离开输入框（change）时没点别的东西（点了空白处、收起键盘）才去掉；点的是行、按钮，或者 Tab 到了下一项就不动：
-  // 点别处时 change 在按下那一刻就触发，这时重画会吞掉松开时的点击；点完再重画，又会把刚展开的行、刚打开的面板关上，
-  // Tab 过去的焦点也会丢。类型标签、「清除」自己会带上 q 的新值。pressing：鼠标 / 手指按下、这次点击还没来
-  let pressing = false;
-  const press = (e) => (pressing = e.type === "pointerdown");
-  const PRESS = ["pointerdown", "pointercancel", "click"];
-  for (const t of PRESS) document.addEventListener(t, press, true);
-  ctx.onCleanup(() => PRESS.forEach((t) => document.removeEventListener(t, press, true)));
-  const CONTROL = "a[href], button, input, select, textarea, label, summary, [role=button], [tabindex]:not([tabindex='-1'])";
-  input.addEventListener("change", () => {
-    if (pressing) {
-      document.addEventListener(
-        "click",
-        (e) => {
-          if (!e.target.closest(CONTROL)) setTimeout(dropQ);
-        },
-        { once: true }
-      );
-      return;
-    }
-    // 回车时 change 在 submit 之前触发：放到后面交给 submit（先重画的话表单已经不在页面上，submit 发不出去）
-    setTimeout(() => {
-      if (document.activeElement === document.body) dropQ();
-    });
-  });
+  const flush = () => setText(input.value.trim().slice(0, 60));
+  // 点「×」、按 Esc 清空时不用等防抖
+  input.addEventListener("search", flush);
+  // 刚打完字就离开输入框（马上点了「上一段」、类型标签这类会重画整页的控件）：URL 先跟上，重画时才带对 q。
+  // 列表还是等防抖：按下时就重画列表，松开时的点击会落空（点的正好是一行时就进不去详情了）
+  input.addEventListener("blur", () => syncQuery(input.value.trim().slice(0, 60)));
+  // 回车：列表已经跟着筛过了，这里只收起键盘
   ctx.root.querySelector("#pg-tl-search").addEventListener("submit", (e) => {
     e.preventDefault();
+    flush();
     input.blur();
-    ctx.setQuery({ q: input.value.trim().slice(0, 60) || null });
   });
 }
 
@@ -516,12 +527,12 @@ function socText(a, b) {
 
 // 最后那段停车之后正在进行的事（LIVE_SQL）
 function liveTag(kind) {
-  return kind === "drive" ? ui.pill("已出发，正在行驶", "accent", { icon: "road-variant" }) : ui.pill("已插枪，正在充电", "green", { icon: "ev-station" });
+  return kind === "drive" ? ui.pill("正在行驶", "accent", { icon: "road-variant" }) : ui.pill("正在充电", "green", { icon: "ev-station" });
 }
 
 // 停车行的时间段单独占一行：「20:21–次日 07:56」在 320 宽的屏上放不下，从「–」后面折行，别把结束时间截掉
 function spanWrap(start, end) {
-  return html`<span class="pg-tl-span"><span>${fmt.time(start)}–</span><span>${endTime(start, end)}</span></span>`;
+  return html`<span class="pg-tl-span"><span class="tm-nowrap">${fmt.time(start)}–</span><span class="tm-nowrap">${endTime(start, end)}</span></span>`;
 }
 
 function item(e, ctx) {
@@ -671,12 +682,3 @@ function details(e, ctx) {
     </div>`;
 }
 
-// 「2026.32.1 429934134f」→「2026.32.1」（面板也是取空格前面那段）
-function shortVersion(v) {
-  return v ? String(v).split(" ")[0] : null;
-}
-
-// 版本号只放行「数字.数字…」这种，别把数据库里的任意文本拼进链接
-function releaseNotes(v) {
-  return v && /^\d{4}\.\d{1,3}(\.\d{1,3}){0,3}$/.test(v) ? `https://www.notateslaapp.com/software-updates/version/${v}/release-notes` : null;
-}

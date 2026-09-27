@@ -528,8 +528,8 @@ export function rank(items, { tone: t = "accent", shown = 5, unit, digits = 0, m
     const text = r.text != null ? r.text : r.value == null ? "—" : `${fmt.num(r.value, digits)}${unit ? " " + unit : ""}`;
     const tip = typeof r.name === "string" ? raw(` title="${esc(r.name)}"`) : "";
     const name = r.href
-      ? html`<a class="tm-rank-name" href="${r.href}"${tip}>${r.name}</a>`
-      : html`<span class="tm-rank-name"${tip}>${r.name}</span>`;
+      ? html`<a class="tm-rank-name" href="${r.href}"${tip}><span class="tm-rank-text">${r.name}</span></a>`
+      : html`<span class="tm-rank-name"${tip}><span class="tm-rank-text">${r.name}</span></span>`;
     return html`<li class="tm-rank-row"${i >= lim ? raw(" hidden") : ""}>
       <span class="tm-rank-no${i < 3 ? " is-top" : ""}">${r.rank != null ? r.rank : i + 1}</span>
       <div class="tm-rank-main">
@@ -702,11 +702,19 @@ export function dayGroup(label, totals, body, { key, cls } = {}) {
 //     已有内容里有同样键的元素时，把新元素里的行（.tm-list 的行，或 tbody 的 tr）并进去，而不是再加一块
 //   onDone(shown)：全部显示完时调用一次
 // 返回 { ready（第一页画完的 Promise）, more()（手动加一页）, shown, done }
+//
+// 点过「再显示」、进了详情再退回来时，接着显示到原来那么多条（不然列表只剩第一页，滚动位置也回不去）：
+// container 有 id 时，已显示的条数记在这条历史记录的 history.state.pager[id] 里，下次在同一条历史记录上画这个列表时
+// 一页页加到那么多条，都加完 ready 才完成（外壳等页面画完才恢复滚动位置）
 export function pager(container, { total = null, page = 50, noun = "条", unit, load, onDone } = {}) {
   const u = unit || String(noun).charAt(0) || "条";
+  const hkey = container.id || null;
+  const st = history.state || {};
+  const want = hkey && st.pager ? +st.pager[hkey] || 0 : 0;
   let shown = 0;
   let loading = false;
   let done = false;
+  let failed = false;
   container.classList.add("tm-pager");
   render(container, raw('<div class="tm-pager-items"></div><div class="tm-pager-foot" aria-live="polite"></div>'));
   const itemsEl = container.firstElementChild;
@@ -742,27 +750,38 @@ export function pager(container, { total = null, page = 50, noun = "条", unit, 
     render(footEl, shown > page ? html`<p class="tm-note tm-pager-end">共 ${fmt.int(shown)} ${noun}，已全部显示</p>` : "");
   };
 
+  // 已显示的条数记进当前这条历史记录。列表已经不在页面上（翻页请求回来之前就离开了）时不记：那时的历史记录是别的页面的
+  const remember = () => {
+    if (!hkey || !container.isConnected) return;
+    const cur = history.state || {};
+    history.replaceState({ ...cur, pager: { ...cur.pager, [hkey]: shown } }, "");
+  };
+
   async function more(focus) {
     if (loading || done) return;
     loading = true;
+    failed = false;
     drawFoot();
-    const want = total == null ? page : Math.min(page, left());
+    const ask = total == null ? page : Math.min(page, left());
     let res;
     try {
       res = await load(shown);
     } catch (err) {
       loading = false;
+      failed = true;
       if (err && err.name === "AbortError") return;
       drawFoot(err);
       return;
     }
     loading = false;
     const chunk = res && typeof res === "object" && !(res instanceof Html) && "html" in res ? res : { html: res };
-    const n = Number.isFinite(chunk.count) ? chunk.count : want;
+    const n = Number.isFinite(chunk.count) ? chunk.count : ask;
+    const first = shown === 0;
     const added = appendMerge(itemsEl, chunk.html);
     shown += n;
-    if (chunk.done === true || (chunk.done !== false && (n < want || n <= 0 || (total != null && shown >= total)))) done = true;
+    if (chunk.done === true || (chunk.done !== false && (n < ask || n <= 0 || (total != null && shown >= total)))) done = true;
     drawFoot();
+    if (!first) remember();
     if (focus) focusFirst(added);
     if (done && onDone) onDone(shown);
   }
@@ -772,7 +791,10 @@ export function pager(container, { total = null, page = 50, noun = "条", unit, 
     if (btn && btn.getAttribute("aria-disabled") !== "true") more(true);
   });
 
-  const ready = more(false);
+  const ready = (async () => {
+    await more(false);
+    while (!done && !failed && shown > 0 && shown < want && container.isConnected) await more(false);
+  })();
   return {
     ready,
     more: () => more(true),
@@ -902,8 +924,11 @@ export function closeSheet() {
   if (openPop) openPop.close();
 }
 
+const FOCUSABLE = "button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
+
 // anchor：触发按钮；content：Html 或元素；opts.title：手机面板顶部的标题；opts.wide：宽一点的面板
-// 返回 { el, close }。点面板外、按 Esc、离开页面都会关闭
+// 返回 { el, close }。点面板外、按 Esc、离开页面都会关闭。
+// 打开期间是模态的：页面其余部分设成 inert，Tab 在面板里转圈（手机上底部面板和遮罩盖住了页面，焦点跑出去就看不见了）
 export function openSheet(anchor, content, { title, wide, onClose, label } = {}) {
   closeSheet();
   const backdrop = document.createElement("div");
@@ -911,6 +936,7 @@ export function openSheet(anchor, content, { title, wide, onClose, label } = {})
   const pop = document.createElement("div");
   pop.className = "tm-pop" + (wide ? " is-wide" : "");
   pop.setAttribute("role", "dialog");
+  pop.setAttribute("aria-modal", "true");
   pop.setAttribute("aria-label", label || title || "菜单");
   pop.tabIndex = -1;
   if (title) {
@@ -923,6 +949,9 @@ export function openSheet(anchor, content, { title, wide, onClose, label } = {})
   if (content instanceof Element) box.appendChild(content);
   else render(box, content);
   pop.appendChild(box);
+  // 先记下页面上原来就 inert 的（全屏地图时的页面内容），关的时候只还原自己设的
+  const inerted = [...document.body.children].filter((el) => !el.inert && el.tagName !== "SCRIPT");
+  for (const el of inerted) el.inert = true;
   document.body.append(backdrop, pop);
 
   const place = () => {
@@ -945,6 +974,20 @@ export function openSheet(anchor, content, { title, wide, onClose, label } = {})
     if (e.key === "Escape") {
       e.stopPropagation();
       close(true);
+      return;
+    }
+    if (e.key !== "Tab") return;
+    const items = [...pop.querySelectorAll(FOCUSABLE)].filter((el) => el.getClientRects().length > 0);
+    const first = items[0];
+    const last = items[items.length - 1];
+    const cur = document.activeElement;
+    if (!first) e.preventDefault();
+    else if (e.shiftKey && (cur === first || cur === pop || !pop.contains(cur))) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && (cur === last || !pop.contains(cur))) {
+      e.preventDefault();
+      first.focus();
     }
   };
   // 只在宽度变了（转屏、拖窗口）时关。手机上地址栏收起 / 弹出键盘只改高度，也会触发 resize，
@@ -955,6 +998,7 @@ export function openSheet(anchor, content, { title, wide, onClose, label } = {})
   function close(restoreFocus = true) {
     if (closed) return;
     closed = true;
+    for (const el of inerted) el.inert = false;
     backdrop.remove();
     pop.remove();
     document.removeEventListener("keydown", onKey, true);
@@ -968,7 +1012,7 @@ export function openSheet(anchor, content, { title, wide, onClose, label } = {})
   document.addEventListener("keydown", onKey, true);
   window.addEventListener("resize", onResize);
   if (anchor) anchor.setAttribute("aria-expanded", "true");
-  const first = pop.querySelector("button, a[href], input, select, [tabindex]:not([tabindex='-1'])");
+  const first = pop.querySelector(FOCUSABLE);
   (first || pop).focus({ preventScroll: true });
   const handle = { el: pop, close };
   openPop = handle;
@@ -976,13 +1020,14 @@ export function openSheet(anchor, content, { title, wide, onClose, label } = {})
 }
 
 // 菜单：items = [{ label, icon, href, onClick, checked, external }] | { sep: true } | { heading: "…" }
+// 放在 openSheet 的对话框里，就是一列普通的按钮 / 链接，用 Tab 走（不标 role=menu：那样读屏会提示用方向键，
+// 而这里的项有链接也有按钮，照 menu 的方式做方向键不值得）。checked 的项（当前这辆车）标 aria-current
 export function menu(items) {
   const el = document.createElement("div");
   el.className = "tm-menu";
-  el.setAttribute("role", "menu");
   for (const it of items.filter(Boolean)) {
     if (it.sep) {
-      el.insertAdjacentHTML("beforeend", '<div class="tm-menu-sep" role="separator"></div>');
+      el.insertAdjacentHTML("beforeend", '<div class="tm-menu-sep" aria-hidden="true"></div>');
       continue;
     }
     if (it.heading) {
@@ -994,7 +1039,7 @@ export function menu(items) {
     }
     const node = document.createElement(it.href ? "a" : "button");
     node.className = "tm-menu-item";
-    node.setAttribute("role", "menuitem");
+    if (it.checked) node.setAttribute("aria-current", "true");
     if (it.href) {
       node.href = it.href;
       if (it.external) {

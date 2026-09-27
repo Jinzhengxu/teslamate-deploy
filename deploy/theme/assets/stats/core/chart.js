@@ -10,6 +10,7 @@
  */
 import * as fmt from "./format.js";
 import { esc, onLeave } from "./ui.js";
+import { loadError } from "./api.js";
 
 const SRC = "/stats/vendor/echarts-6.1.0/echarts.min.js";
 const DAY = 86400e3;
@@ -27,7 +28,8 @@ export function load() {
       s.onerror = () => {
         loading = null;
         s.remove();
-        reject(new Error("图表组件加载失败，检查网络后重试"));
+        // 登录过期时 Caddy 回的是登录页，script 只报 onerror：探一下，是 401 就显示「重新登录」
+        loadError(SRC, new Error("图表组件加载失败，检查网络后重试")).then(reject);
       };
       document.head.appendChild(s);
     });
@@ -509,6 +511,7 @@ function build(src, extra = {}, inst = null) {
     let edge = 0;
     const niceAxes = [];
     const shortTime = [];
+    const longTime = [];
     for (const [k, isX] of [["xAxis", true], ["yAxis", false]]) {
       if (o[k] == null) continue;
       const axes = asArray(o[k]).map((a, i) => {
@@ -516,11 +519,8 @@ function build(src, extra = {}, inst = null) {
         const ext = type === "time" || a.__tmNice ? axisExtent(a, series, isX, i) : null;
         const r = merge(axisDefaults(a, isX, t, fs, ext), a);
         if (a.__tmNice) niceAxes.push({ axis: r, isX, ext });
-        // 跨年、半年以上的时间轴在窄图上（手机、桌面窄栏）默认的刻度太密：ECharts 会把「2026年」这种年份标签
-        // 当成和月份挤在一起的那个藏掉，只剩「7月 11月 3月 7月」，看不出是哪年。刻度放稀一点年份就留得住
-        if (type === "time" && ext && a.splitNumber == null && inst && ext[1] - ext[0] > 180 * DAY && crossesYear(ext)) {
-          if ((isX ? inst.getWidth() : inst.getHeight()) < 480) r.splitNumber = 3;
-        }
+        // 八天以上的横向时间轴：刻度自己算（见 evenTimeTicks），ECharts 按每月 1/8/15/22/29 日放的刻度忽密忽疏
+        if (isX && type === "time" && ext && ext[1] - ext[0] > 8 * DAY && inst && labelsShown(r) && ownTicks(a)) longTime.push({ axis: r, ext });
         // 一天多到八天的时间轴：ECharts 按小时出刻度（手机上 6 小时一格），0 点那一格的日期「9月24日」夹在「18:00」「06:00」中间，
         // 被当成重叠的字藏掉，只剩「06:00 12:00 18:00 06:00…」，看不出是哪天。刻度按图宽放稀（每格约 85px，下面算），日期就留得住。
         // 一天以内的（过夜的充电）不动：放稀了只剩「9月19日 01:00」两个刻度，还不如原来一刻钟一格
@@ -551,6 +551,10 @@ function build(src, extra = {}, inst = null) {
     for (const r of shortTime) {
       const px = inst.getWidth() - (labelled("left") ? 40 : gridBase.left) - (labelled("right") ? 40 : gridBase.right);
       r.splitNumber = Math.max(2, Math.min(6, Math.round(px / 85)));
+    }
+    for (const { axis, ext } of longTime) {
+      const px = inst.getWidth() - (labelled("left") ? 40 : gridBase.left) - (labelled("right") ? 40 : gridBase.right);
+      applyEvenTime(axis, ext, px, fs);
     }
     for (const n of niceAxes) applyNice(n, inst, fs);
     out.grid = Array.isArray(o.grid) ? o.grid.map((g) => merge(gridBase, g)) : merge(gridBase, o.grid);
@@ -591,11 +595,6 @@ function build(src, extra = {}, inst = null) {
   return merge(out, extra);
 }
 
-// 调试 / 单元测试用：看合并了默认值之后交给 ECharts 的 option
-export function _build(option, inst) {
-  return build(option, {}, inst || null);
-}
-
 // nice 轴：两端贴着数据，刻度用 customValues 直接给出（刻度数按轴的像素长度和标签宽度定）
 function applyNice({ axis, isX, ext }, inst, fs) {
   const cfg = axis.__tmNice;
@@ -619,6 +618,90 @@ function applyNice({ axis, isX, ext }, inst, fs) {
   axis.min = lo;
   axis.max = hi;
   delete axis.interval;
+  axis.axisLabel = { ...axis.axisLabel, customValues: ticks };
+  axis.axisTick = { ...axis.axisTick, customValues: ticks };
+}
+
+// ---------------------------------------------------------------- 均匀的时间刻度
+
+// 页面自己没定刻度（splitNumber、interval、customValues）的时间轴才由这里接管
+function ownTicks(a) {
+  const al = a.axisLabel || {};
+  return a.splitNumber == null && a.interval == null && al.customValues == null && al.interval == null;
+}
+
+// 刻度步长从小到大试：天（1 / 2 / 7 / 14）、月（1 / 2 / 3 / 6）、年（1 / 2 / 5 / 10）。
+// 周从周一对齐（两周一格的按「1970 年以来第几周」取偶数周，换范围也不会忽前忽后），月从 1 日、年从 1 月 1 日对齐，
+// 几个月一格的只取能整除的月份（1、4、7、10 月），这样刻度间隔一样、而且落在好认的日子上
+const TIME_STEPS = [
+  ["day", 1], ["day", 2], ["day", 7], ["day", 14],
+  ["month", 1], ["month", 2], ["month", 3], ["month", 6],
+  ["year", 1], ["year", 2], ["year", 5], ["year", 10]
+];
+const MONDAY0 = new Date(1970, 0, 5).getTime();
+
+function stepTicks(lo, hi, unit, n) {
+  const out = [];
+  const d0 = new Date(lo);
+  if (unit === "day") {
+    const d = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate());
+    if (d.getTime() < lo) d.setDate(d.getDate() + 1);
+    if (n >= 7) {
+      d.setDate(d.getDate() + ((8 - d.getDay()) % 7));
+      if (n === 14 && Math.round((d.getTime() - MONDAY0) / (7 * DAY)) % 2) d.setDate(d.getDate() + 7);
+    }
+    for (; d.getTime() <= hi; d.setDate(d.getDate() + n)) out.push(d.getTime());
+  } else if (unit === "month") {
+    const d = new Date(d0.getFullYear(), d0.getMonth(), 1);
+    if (d.getTime() < lo) d.setMonth(d.getMonth() + 1);
+    while (d.getMonth() % n) d.setMonth(d.getMonth() + 1);
+    for (; d.getTime() <= hi; d.setMonth(d.getMonth() + n)) out.push(d.getTime());
+  } else {
+    let y = d0.getFullYear();
+    if (new Date(y, 0, 1).getTime() < lo) y++;
+    while (y % n) y++;
+    for (; new Date(y, 0, 1).getTime() <= hi; y += n) out.push(new Date(y, 0, 1).getTime());
+  }
+  return out;
+}
+
+// 刻度文字：和 timeLabels 一样的写法 —— 跨年时按天的刻度带年份（2025/12/29）；按月的写「7月」，1 月写「2026年」；
+// 不到两个月的轴上月初也写成「8月1日」
+function evenTimeLabel(unit, crossYear, short) {
+  return (v) => {
+    const d = new Date(v);
+    const y = d.getFullYear();
+    const m = d.getMonth() + 1;
+    const md = crossYear ? `${y}/${m}/${d.getDate()}` : `${m}月${d.getDate()}日`;
+    if (unit === "day" || short) return md;
+    return unit === "year" || m === 1 ? `${y}年` : `${m}月`;
+  };
+}
+
+// 按轴的像素长度挑最小的、标签彼此不挤的步长：相邻两个刻度（按最短的那种间隔，比如 2 月的 28 天）之间要放得下
+// 一个最宽的标签再加 14px。两个月以上的轴先看按月（「5月 6月 7月」比每隔两周的「4月13日 4月27日」好认），
+// 按月至少有 4 个刻度才用，不然宽图上只剩两三个刻度，退回按周。只剩不到两个刻度就不管了，交给 ECharts
+function applyEvenTime(axis, [lo, hi], px, fs) {
+  const f = axis.axisLabel && axis.axisLabel.formatter;
+  const lfs = (axis.axisLabel && axis.axisLabel.fontSize) || fs;
+  const crossYear = crossesYear([lo, hi]);
+  const short = hi - lo < 62 * DAY;
+  const perMs = px / (hi - lo);
+  const fits = ([unit, n], minTicks) => {
+    const ticks = stepTicks(lo, hi, unit, n);
+    if (ticks.length < minTicks) return null;
+    const label = typeof f === "function" ? (v) => String(f(v, 0) ?? "") : evenTimeLabel(unit, crossYear, short);
+    const minGap = unit === "day" ? n * DAY : unit === "month" ? n * 28 * DAY : n * 365 * DAY;
+    const w = Math.max(...ticks.map((v) => textWidth(label(v), lfs)));
+    return minGap * perMs >= w + 14 ? ticks : null;
+  };
+  const pick = (short ? [] : TIME_STEPS.filter(([u]) => u === "month").map((st) => [st, 4]))
+    .concat(TIME_STEPS.map((st) => [st, 2]))
+    .map(([st, min]) => [st, fits(st, min)])
+    .find(([, ticks]) => ticks);
+  if (!pick) return;
+  const [[unit], ticks] = pick;
+  if (typeof f !== "function") axis.axisLabel = { ...axis.axisLabel, formatter: evenTimeLabel(unit, crossYear, short) };
   axis.axisLabel = { ...axis.axisLabel, customValues: ticks };
   axis.axisTick = { ...axis.axisTick, customValues: ticks };
 }
@@ -663,6 +746,27 @@ window.addEventListener("tm-themechange", () => {
     draw(inst, { notMerge: true });
   }
 });
+
+// 触屏上点一下图表出提示框，ECharts 要等再点图里别的地方才换掉它，点图外面（页面空白、别的卡片）它一直盖在柱子上。
+// 按下的地方不在某张图里，就收起那张图的提示框和指针线。捕获阶段、被动监听：不影响页面自己的点击
+document.addEventListener(
+  "pointerdown",
+  (e) => {
+    // 联动的图（connect）会把 hideTip 转给同组的图：按在其中一张上时，同组的都不动
+    let group = null;
+    for (const inst of live) if (!inst.isDisposed() && inst.group && inst.getDom().contains(e.target)) group = inst.group;
+    for (const inst of live) {
+      if (inst.isDisposed()) {
+        live.delete(inst);
+        continue;
+      }
+      if (inst.getDom().contains(e.target) || (group && inst.group === group)) continue;
+      inst.dispatchAction({ type: "hideTip" });
+      inst.dispatchAction({ type: "updateAxisPointer", currTrigger: "leave" });
+    }
+  },
+  { capture: true, passive: true }
+);
 
 const LEGEND_EVENTS = ["legendselectchanged", "legendselected", "legendunselected", "legendselectall", "legendinverseselect"];
 

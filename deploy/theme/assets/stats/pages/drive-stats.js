@@ -254,7 +254,7 @@ async function drawTrend(ctx, trend, kind, span) {
 function histNote(hist) {
   const peak = hist.reduce((a, b) => (b.pct > a.pct ? b : a), hist[0]);
   const secs = hist.reduce((s, r) => s + r.secs, 0);
-  return html`<p class="tm-note pg-ds-note">最常开 <strong class="tm-strong">${fmt.speed(peak.speed)}</strong> 左右，占 ${fmt.share(peak.pct)}；<span class="pg-ds-nb">共统计了 ${fmt.hours(secs / 60)}的驾驶。</span></p>`;
+  return html`<p class="tm-note pg-ds-note">最常开 <strong class="tm-strong">${fmt.speed(peak.speed)}</strong> 左右，占 ${fmt.share(peak.pct)}；<span class="tm-nowrap">共统计了 ${fmt.hours(secs / 60)}的驾驶。</span></p>`;
 }
 
 async function drawHist(ctx, hist) {

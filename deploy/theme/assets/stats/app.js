@@ -138,9 +138,13 @@ let seq = 0;
 let page = null; // 当前页面：{ controller, cleanups, ctx, route, mod, range }
 const moduleCache = new Map();
 
+// 模块加载失败时浏览器只说「Failed to fetch dynamically imported module」：登录过期（Caddy 回 401 登录页）
+// 和断网都是这句，用 api.loadError 探一下，登录过期的显示「重新登录」，断网的显示「连不上服务器」
 function importPage(file, bust) {
   if (!bust && moduleCache.has(file)) return moduleCache.get(file);
-  const p = import(`./pages/${file}${bust ? "?v=" + Date.now() : ""}`);
+  const p = import(`./pages/${file}${bust ? "?v=" + Date.now() : ""}`).catch(async (e) => {
+    throw await api.loadError(`/stats/pages/${file}`, e);
+  });
   moduleCache.set(file, p);
   p.catch(() => moduleCache.delete(file));
   return p;
@@ -189,7 +193,12 @@ function href(path, query) {
   return u.pathname + u.search + u.hash;
 }
 
+// 后退 / 刷新后恢复滚动位置期间（页面还没画到原来那么高）不记：那时浏览器把滚动位置夹到了页面底，
+// 记下来就把要恢复的位置覆盖成了被夹过的值
+let restoring = false;
+
 function saveScroll() {
+  if (restoring) return;
   const st = history.state || {};
   if (st.scroll !== window.scrollY) history.replaceState({ ...st, scroll: window.scrollY }, "");
 }
@@ -213,7 +222,7 @@ function navigate(to, { replace = false } = {}) {
   const st = history.state || {};
   if (replace) history.replaceState({ idx: st.idx || 0, prevTitle: st.prevTitle }, "", u);
   else history.pushState({ idx: (st.idx || 0) + 1, prevTitle: page ? page.title : "统计" }, "", u);
-  show({ scroll: 0 });
+  show({ scroll: 0, focus: "title" });
 }
 
 function goBack(parent) {
@@ -229,16 +238,17 @@ function setQuery(obj, { push = false } = {}) {
   clearTimeout(scrollTimer);
   saveScroll();
   const st = history.state || {};
+  // 条件变了，列表是另一份：「再显示」到第几条（ui.pager 记的）不再作数
   if (push) history.pushState({ idx: (st.idx || 0) + 1, prevTitle: page ? page.title : st.prevTitle }, "", u);
-  else history.replaceState(st, "", u);
-  show({ scroll: null });
+  else history.replaceState({ ...st, pager: undefined }, "", u);
+  show({ scroll: null, focus: "keep" });
 }
 
 window.addEventListener("popstate", () => {
   // 上一页还没来得及记下的滚动位置不能再写了：history.state 已经换成要回去的那一条
   clearTimeout(scrollTimer);
   const st = history.state || {};
-  show({ scroll: st.scroll || 0, restore: true });
+  show({ scroll: st.scroll || 0, restore: true, focus: "title" });
 });
 
 // 真正的静态文件（和 nginx 配置 teslamate-theme.conf 里的扩展名列表保持一致）。
@@ -295,13 +305,13 @@ function renderHead({ title, route, r, car, loading, rangePending }) {
         ? html`<a class="tm-back" href="${href(parent)}" data-back>${icon("chevron-left")}<span>${backLabel}</span></a>`
         : ""}
       <div class="tm-head-row">
-        <h1 class="tm-title" id="tm-title">${title}</h1>
+        <h1 class="tm-title" id="tm-title" tabindex="-1">${title}</h1>
         ${route && !loading
-          ? html`<button type="button" class="tm-icon-btn" data-tm-more aria-label="更多操作" aria-haspopup="menu" aria-expanded="false">${icon("dots-horizontal")}</button>`
+          ? html`<button type="button" class="tm-icon-btn" data-tm-more aria-label="更多操作" aria-haspopup="dialog" aria-expanded="false">${icon("dots-horizontal")}</button>`
           : ""}
       </div>
       ${multi
-        ? html`<button type="button" class="tm-car-btn" data-cars aria-haspopup="menu" aria-expanded="false" aria-label="切换车辆，当前：${car.label}">${icon("car-side")}<span>${car.label}</span>${icon("chevron-down")}</button>`
+        ? html`<button type="button" class="tm-car-btn" data-cars aria-haspopup="dialog" aria-expanded="false" aria-label="切换车辆，当前：${car.label}">${icon("car-side")}<span>${car.label}</span>${icon("chevron-down")}</button>`
         : ""}
       ${r ? range.bar(r) : rangePending ? range.barPending() : ""}`
   );
@@ -350,8 +360,9 @@ function carItems(p) {
     checked: p.car && c.id === p.car.id,
     onClick: () => {
       store(CAR_KEY, String(c.id));
-      // 详情页的 id 是上一辆车的行程 / 充电，换车后没有意义，回到上级列表
-      if (Object.keys(p.params || {}).length) navigate(href(p.route.parent || "/stats/", { car: c.id }));
+      // 详情页的 id 是上一辆车的行程 / 充电，换车后没有意义，回到上级列表。替换掉详情页这条历史：
+      // 不然返回键写着「4月25日的行程」、后退又回到上一辆车的详情
+      if (Object.keys(p.params || {}).length) navigate(href(p.route.parent || "/stats/", { car: c.id }), { replace: true });
       else setQuery({ car: c.id });
     }
   }));
@@ -403,19 +414,77 @@ function openMore(btn) {
     icon: "refresh",
     onClick: () => {
       api.clearCache();
-      show({ scroll: null });
+      show({ scroll: null, focus: "keep" });
     }
   });
   if (api.cars.length > 1) items.push({ sep: true }, { heading: "车辆" }, ...carItems(p));
   ui.openSheet(btn, ui.menu(items), { title: "更多" });
 }
 
+// ---------------------------------------------------------------- 焦点
+
+// 整页重画（换范围、分段选择、筛选、刷新数据、换车）会把按过的按钮连同整页换掉，焦点掉回 <body>：
+// 键盘用户得从页面顶上重新 Tab，分段选择的方向键第二次就没反应了。重画前按「这是哪个控件」记下焦点，
+// 画完在新页面里找回同一个控件。返回候选的选择器，前面的找不到（或禁用了）用后面的
+function focusKey(el) {
+  if (!el || el === doc.body || !el.isConnected) return null;
+  const d = el.dataset || {};
+  const esc = (v) => CSS.escape(String(v));
+  // 「下一段」到头以后是禁用的，退到范围按钮上
+  if (d.rangeStep != null) return [`[data-range-step="${esc(d.rangeStep)}"]`, "[data-range-open]"];
+  if (el.matches("[data-range-open]")) return ["[data-range-open]"];
+  if (el.matches("[data-tm-more]")) return ["[data-tm-more]"];
+  if (el.matches("[data-cars]")) return ["[data-cars]", "[data-tm-more]"];
+  const seg = el.closest(".tm-seg[data-seg]");
+  if (seg && d.value != null) {
+    const s = `.tm-seg[data-seg="${esc(seg.dataset.seg)}"]`;
+    return [`${s} [data-value="${esc(d.value)}"]`, `${s} [tabindex="0"]`];
+  }
+  if (el.matches("[data-tm-filter-toggle], [data-tm-filter-clear]")) return ["[data-tm-filter-toggle]"];
+  if (el.matches(".tm-chip[data-key]")) return [`.tm-chip[data-key="${esc(d.key)}"]`];
+  if (d.type != null) return [`[data-type="${esc(d.type)}"]`];
+  // 触屏上不把焦点放回输入框：会又弹出键盘
+  if (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) && el.name) {
+    return window.matchMedia("(pointer: coarse)").matches ? null : [`${el.tagName.toLowerCase()}[name="${esc(el.name)}"]`];
+  }
+  // ui 组件每次生成的 id（tm-filter12、tm-rp3）重画后就变了，不算
+  if (el.id && !/^tm-[a-z]+\d+$/.test(el.id)) return [`#${esc(el.id)}`];
+  return null;
+}
+
+function refocus(keys) {
+  if (!keys) return false;
+  for (const sel of keys) {
+    const el = doc.querySelector(sel);
+    if (el && !el.disabled && el.getClientRects().length) {
+      el.focus({ preventScroll: true });
+      return true;
+    }
+  }
+  return false;
+}
+
+// 换了一页：焦点放到新页面的标题上（读屏念出新页面，下一次 Tab 从页头接着走）
+function focusTitle() {
+  const h = doc.getElementById("tm-title");
+  if (h) h.focus({ preventScroll: true });
+}
+
 // ---------------------------------------------------------------- 渲染一页
 
-// scroll：0 回到顶部；数字 + restore：画完后滚到这个位置（后退、刷新）；null：留在原处（setQuery、刷新数据）
-async function show({ scroll = 0, restore = false, bust = false } = {}) {
+// scroll：0 回到顶部；数字 + restore：画完后滚到这个位置（后退、刷新）；null：留在原处（setQuery、刷新数据）。
+// focus："title" 换了一页，焦点放到标题上；"keep" 原地重画，焦点放回原来那个控件；不给就不动（第一次打开）
+async function show({ scroll = 0, restore = false, bust = false, focus = null } = {}) {
   const token = ++seq;
   leave();
+  // leave 关掉弹出面板时焦点已经还给了打开它的按钮（范围、⋯、换车），记的就是那个按钮
+  const keep = focus === "keep" ? focusKey(doc.activeElement) : null;
+  const settleFocus = () => {
+    if (token !== seq) return;
+    if (focus === "title") focusTitle();
+    else if (keep && (doc.activeElement === doc.body || !doc.activeElement)) refocus(keep);
+  };
+  restoring = restore;
   const url = new URL(location.href);
   const m = match(url.pathname);
   progress.start();
@@ -434,6 +503,8 @@ async function show({ scroll = 0, restore = false, bust = false } = {}) {
     renderHead({ title: "找不到页面", route: null });
     render(view, ui.empty("这个地址没有对应的统计页。", { icon: "help-circle-outline", action: ui.button("回到统计", { href: href("/stats/"), kind: "soft" }) }));
     view.style.minHeight = "";
+    restoring = false;
+    settleFocus();
     progress.done();
     return;
   }
@@ -452,6 +523,8 @@ async function show({ scroll = 0, restore = false, bust = false } = {}) {
     renderHead({ title: route.title, route });
     render(view, ui.card(ui.empty("TeslaMate 记录到车辆数据后，这里就会显示统计。", { icon: "car-side", title: "还没有车辆数据" })));
     view.style.minHeight = "";
+    restoring = false;
+    settleFocus();
     progress.done();
     return;
   }
@@ -462,10 +535,16 @@ async function show({ scroll = 0, restore = false, bust = false } = {}) {
     if (mod.css) await loadPageCss(route.module);
   } catch (e) {
     if (token !== seq) return;
-    console.error(e);
     renderHead({ title: route.title, route: null });
-    render(view, ui.error(new Error("页面加载失败：" + (e.message || e)), () => show({ scroll: null, bust: true })));
+    // 登录过期、断网（api.loadError 换好的）直接显示成「重新登录」「连不上服务器」，不算程序错误
+    if (e.auth || e.network) render(view, ui.error(e, () => show({ scroll: null, bust: true })));
+    else {
+      console.error(e);
+      render(view, ui.error(new Error("页面加载失败：" + (e.message || e)), () => show({ scroll: null, bust: true })));
+    }
     view.style.minHeight = "";
+    restoring = false;
+    settleFocus();
     progress.done();
     return;
   }
@@ -520,6 +599,8 @@ async function show({ scroll = 0, restore = false, bust = false } = {}) {
     current.range = r;
   }
   renderHead({ title, route, r, car });
+  // 页头这一次画完就不再重画了：页头上的控件（范围、⋯、换车）现在就能把焦点放回去，页面里的等页面画完
+  settleFocus();
 
   api.setContext({ vars, range: r ? { from: r.from, to: r.to } : null });
 
@@ -565,7 +646,7 @@ async function show({ scroll = 0, restore = false, bust = false } = {}) {
     },
     // 原地重画本页（新 root，滚动位置保留，查询走 60 秒缓存）
     rerender() {
-      if (page === current) show({ scroll: null });
+      if (page === current) show({ scroll: null, focus: "keep" });
     },
     // 给页头「在 Grafana 中打开」的链接加参数（覆盖上一次设的；null 清掉）。值是数组时写成多个同名参数。
     // 给了 uid 时只作用于那个面板的链接（一页对应多个面板时用），和不带 uid 设的参数叠加，同名的以它为准
@@ -596,6 +677,8 @@ async function show({ scroll = 0, restore = false, bust = false } = {}) {
   } finally {
     if (token === seq) {
       view.style.minHeight = "";
+      restoring = false;
+      if (focus === "keep") settleFocus();
       progress.done();
     }
   }

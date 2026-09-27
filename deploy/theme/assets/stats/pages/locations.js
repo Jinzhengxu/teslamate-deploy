@@ -30,14 +30,18 @@ const GEOFENCE_IDS = `select start_geofence_id from drives where car_id = $car_i
   union
   select geofence_id from charging_processes where car_id = $car_id and ($__timeFilter(start_date) or $__timeFilter(end_date))`;
 
-// 到达次数（行程终点在这里、结束时间在范围内）和充电次数（和面板圈地址的条件一样）
+// 到达次数（行程终点在这里、结束时间在范围内）和充电次数（时间条件和面板圈地址的一样）。
+// 充电次数只数已经结束、充进了电的：正在充和中途断掉的不计入，和充电列表、充电统计的次数对得上（CONVENTIONS (e)）
 const VISITS = `arr as (
   select end_address_id as id, count(*) as n, max(end_date) as last, max(end_geofence_id) as gid
   from drives where car_id = $car_id and $__timeFilter(end_date) group by 1
 ),
 chg as (
   select address_id as id, count(*) as n, max(start_date) as last, max(geofence_id) as gid
-  from charging_processes where car_id = $car_id and ($__timeFilter(start_date) or $__timeFilter(end_date)) group by 1
+  from charging_processes
+  where car_id = $car_id and ($__timeFilter(start_date) or $__timeFilter(end_date))
+    and end_date is not null and (charge_energy_added is null or charge_energy_added > 0)
+  group by 1
 )`;
 
 // addr：搜索词的 ilike 模式（api.like 的结果），没有搜索词时是「%%」，和面板一样也会滤掉 display_name 为空的地址
@@ -57,14 +61,17 @@ from addresses
 where state is not null and id in (${ADDRESS_IDS})
 group by 1 order by 2 desc, 1 limit 10`,
 
-  // 面板「Geo-fences」+ 到达 / 充电次数。面板按创建时间倒序，这里按到达次数排（常去的在前）
+  // 面板「Geo-fences」+ 到达 / 充电次数（充电次数的条件同上面 VISITS）。面板按创建时间倒序，这里按到达次数排（常去的在前）
   geofences: `with arr as (
   select end_geofence_id as id, count(*) as n, max(end_date) as last
   from drives where car_id = $car_id and $__timeFilter(end_date) group by 1
 ),
 chg as (
   select geofence_id as id, count(*) as n
-  from charging_processes where car_id = $car_id and ($__timeFilter(start_date) or $__timeFilter(end_date)) group by 1
+  from charging_processes
+  where car_id = $car_id and ($__timeFilter(start_date) or $__timeFilter(end_date))
+    and end_date is not null and (charge_energy_added is null or charge_energy_added > 0)
+  group by 1
 )
 select g.id, g.name, coalesce(arr.n, 0) as arrivals, coalesce(chg.n, 0) as charges, arr.last
 from geofences g

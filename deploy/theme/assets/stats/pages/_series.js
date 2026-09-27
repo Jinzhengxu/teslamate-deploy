@@ -39,23 +39,25 @@ function cell(text) {
 
 // 图下面的图例表（Grafana 的 table 图例）：色块、名字、各统计列。
 // lines：[{ name, color（主题色名 c1…c6）, dashed, data: [[ms, v], …], fmt }]；cols：[{ key, label }]，key 是 calcs() 的字段。
-// chart：图表容器的 id。toggle: true 时每行是按钮，点一下隐藏 / 显示那条线（配合 bindLegendToggle）。
+// chart：图表容器的 id。toggle: true 时名字做成开关按钮，点一下隐藏 / 显示那条线（配合 bindLegendToggle）。
+// 按钮放在名字格里，行本身还是普通的表格行：整行做成按钮的话，读屏把整行数字念成一个按钮名，表格的行列也没了。
 // shortUnits: true 时 ≤374px 宽不写长度单位
 export function legendTable(lines, { cols = STATS3, chart, toggle, shortUnits } = {}) {
   return html`<table class="pg-series-legend${toggle ? " is-toggle" : ""}${shortUnits ? " is-short-units" : ""}"${chart ? html` data-chart="${chart}"` : ""}>
     <thead><tr><th scope="col">系列</th>${cols.map((c) => html`<th scope="col">${c.label}</th>`)}</tr></thead>
     <tbody>${lines.map((l) => {
       const k = calcs(l.data);
-      const name = html`<th scope="row"><i class="${l.dashed ? "is-dashed" : ""}" style="color:var(--tm-${l.color})"></i>${l.name}</th>`;
+      const sw = html`<i class="${l.dashed ? "is-dashed" : ""}" style="color:var(--tm-${l.color})"></i>${l.name}`;
+      const name = toggle
+        ? html`<th scope="row"><button type="button" class="pg-series-toggle" data-series="${l.name}" aria-pressed="true" title="点一下隐藏 / 显示这条线">${sw}</button></th>`
+        : html`<th scope="row">${sw}</th>`;
       const tds = cols.map((c) => html`<td>${cell(l.fmt(k[c.key]))}</td>`);
-      return toggle
-        ? html`<tr data-series="${l.name}" tabindex="0" role="button" aria-pressed="true" title="点一下隐藏 / 显示这条线">${name}${tds}</tr>`
-        : html`<tr>${name}${tds}</tr>`;
+      return toggle ? html`<tr data-series="${l.name}">${name}${tds}</tr>` : html`<tr>${name}${tds}</tr>`;
     })}</tbody>
   </table>`;
 }
 
-// 图例表点一行（或回车、空格）：隐藏 / 显示对应的线。
+// 图例表点一行（名字是按钮，键盘在按钮上按回车、空格；整行也能点）：隐藏 / 显示对应的线。
 // charts：Map(图表容器 id → { inst, hidden: Set })。hidden 由页面持有，换主题时 option 函数按它重设 legend.selected。
 // 提示框用的是 chart.nearestTooltip，它读实例的图例状态，关掉的线提示框里也不显示
 export function bindLegendToggle(root, charts) {
@@ -75,18 +77,13 @@ export function bindLegendToggle(root, charts) {
     } finally {
       c.inst.group = group;
     }
-    tr.setAttribute("aria-pressed", off ? "false" : "true");
+    tr.classList.toggle("is-off", off);
+    const btn = tr.querySelector(".pg-series-toggle");
+    if (btn) btn.setAttribute("aria-pressed", off ? "false" : "true");
   };
-  const row = (e) => e.target.closest(".pg-series-legend.is-toggle tr[data-series]");
+  // 按钮上的回车、空格浏览器会转成 click，一个监听就够了
   root.addEventListener("click", (e) => {
-    const tr = row(e);
+    const tr = e.target.closest(".pg-series-legend.is-toggle tr[data-series]");
     if (tr) toggle(tr);
-  });
-  root.addEventListener("keydown", (e) => {
-    if (e.key !== "Enter" && e.key !== " ") return;
-    const tr = row(e);
-    if (!tr) return;
-    e.preventDefault();
-    toggle(tr);
   });
 }

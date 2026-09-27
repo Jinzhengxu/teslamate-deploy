@@ -24,7 +24,8 @@
 }
 
 .pg-tl-chip-n {
-  color: var(--tm-text-hint);
+  /* 12.5px 的小字，--tm-text-hint 在标签底色上不到 4.5:1 */
+  color: var(--tm-text-2);
   font-size: 12.5px;
   font-weight: 500;
 }
@@ -38,11 +39,6 @@
 /* 停车行的「20:21–次日 07:56」：窄屏放不下时从「–」后面折成两行（公共样式是单行省略，会把结束时间截掉） */
 .pg-tl-span {
   white-space: normal;
-}
-
-.pg-tl-span > span {
-  display: inline-block;
-  white-space: nowrap;
 }
 
 /* 展开的明细（停车、数据缺失、软件更新）：比详情页的键值对紧凑一点，展开好几行时不至于把列表撑得太长 */

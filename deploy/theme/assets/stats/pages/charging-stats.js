@@ -420,12 +420,12 @@ export async function render(ctx) {
         ${ui.section(
           "充到多少",
           ui.card(socList(d.endSoc, (soc) => (lfp ? null : soc >= 91 ? "red" : soc >= 81 ? "amber" : null), "这段时间没有结束电量记录。")),
-          { sub: lfp ? "充电结束时的电量。连续几次充电（中间没开车）只算最后一次" : "充电结束时的电量，超过 80% 标黄、超过 90% 标红。连续几次充电只算最后一次" }
+          { sub: lfp ? "结束时的电量；连续几次（中间没开车）只算最后一次" : "结束时的电量，超过 80% 标黄、超过 90% 标红；连续几次只算最后一次" }
         )}
         ${ui.section(
           "从多少开始充",
           ui.card(socList(d.startSoc, (soc) => (soc < 10 ? "red" : soc < 20 ? "amber" : null), "这段时间没有开始电量记录。")),
-          { sub: "开始充电时的电量，低于 20% 标黄、低于 10% 标红。连续几次充电只算第一次" }
+          { sub: "开始时的电量，低于 20% 标黄、低于 10% 标红；连续几次只算第一次" }
         )}
       </div>
     `
@@ -492,17 +492,17 @@ function bindFilter(ctx, geoIds) {
 function splitCard(ac, dc) {
   const block = (label, a, b, text) => {
     const total = (a || 0) + (b || 0);
-    const pa = share(a || 0, total);
-    const pb = share(b || 0, total);
+    // 两边合起来是全部，用 fmt.shares 分，免得写出「交流 50%、直流 51%」
+    const [pa, pb] = fmt.shares([a, b]);
     return html`<div class="pg-cs-split">
       <div class="tm-between"><span class="tm-strong">${label}</span><span class="tm-num tm-small tm-muted">合计 ${text(total)}</span></div>
-      <div class="pg-cs-split-bar" role="img" aria-label="${`${label}：交流 ${fmt.share(pa)}，直流 ${fmt.share(pb)}`}">
+      <div class="pg-cs-split-bar" role="img" aria-label="${`${label}：交流 ${pa}，直流 ${pb}`}">
         ${a > 0 ? html`<span class="is-ac" style="${`flex-grow:${a}`}"></span>` : ""}
         ${b > 0 ? html`<span class="is-dc" style="${`flex-grow:${b}`}"></span>` : ""}
       </div>
       <div class="pg-cs-split-legend">
-        <span><i class="is-ac"></i>交流 <b class="tm-num">${a > 0 ? text(a) : "没有"}</b>${a > 0 ? html`<em>${fmt.share(pa)}</em>` : ""}</span>
-        <span><i class="is-dc"></i>直流 <b class="tm-num">${b > 0 ? text(b) : "没有"}</b>${b > 0 ? html`<em>${fmt.share(pb)}</em>` : ""}</span>
+        <span><i class="is-ac"></i>交流 <b class="tm-num">${a > 0 ? text(a) : "没有"}</b>${a > 0 ? html`<em>${pa}</em>` : ""}</span>
+        <span><i class="is-dc"></i>直流 <b class="tm-num">${b > 0 ? text(b) : "没有"}</b>${b > 0 ? html`<em>${pb}</em>` : ""}</span>
       </div>
     </div>`;
   };
@@ -518,13 +518,14 @@ function splitCard(ac, dc) {
 function socList(rows, toneOf, emptyText) {
   if (!rows.length) return ui.empty(emptyText, { icon: "battery-outline" });
   const max = Math.max(...rows.map((r) => r.n));
-  const total = rows.reduce((a, r) => a + r.n, 0);
-  return html`<div class="pg-cs-soc">${rows.map((r) => {
+  // 各档合起来是全部，占比用 fmt.shares 分（各自四舍五入常常加起来是 99% 或 101%）
+  const shares = fmt.shares(rows.map((r) => r.n));
+  return html`<div class="pg-cs-soc">${rows.map((r, i) => {
     const t = toneOf(r.soc);
     return html`<div class="pg-cs-soc-row">
       <span class="pg-cs-soc-label tm-num${t ? ` tm-tone-${t}` : ""}">${fmt.pct(r.soc)}</span>
       ${ui.bar(r.n, max, t || "accent")}
-      <span class="pg-cs-soc-n tm-num">${fmt.int(r.n)} 次<em>${fmt.share(share(r.n, total))}</em></span>
+      <span class="pg-cs-soc-n tm-num">${fmt.int(r.n)} 次<em>${shares[i]}</em></span>
     </div>`;
   })}</div>`;
 }
@@ -599,6 +600,10 @@ function heatData(rows, span) {
   const unit = chart.bucketKind(span.from, span.to, { day: 35, week: 150 });
   const cols = [];
   for (let t = chart.bucketOf(span.from, unit); t <= span.to; t = chart.bucketEnd(t, unit)) cols.push(t);
+  // 每列在范围里实际占的那几天：首尾两列常常只有一部分落在范围里（近 90 天从周日起，第一列只有这一天），
+  // 列名和提示框按这个写，不写成范围以前的那个周一 / 月初。分桶本身不动
+  const firstDay = cols.map((t) => Math.max(t, chart.bucketOf(span.from, "day")));
+  const lastDay = cols.map((t) => chart.bucketOf(Math.min(chart.bucketEnd(t, unit) - 1, span.to), "day"));
   const index = new Map(cols.map((t, i) => [t, i]));
   const cells = cols.map(() => SOC_BUCKETS.map(() => ({ start: 0, end: 0 })));
   for (const r of pts) {
@@ -620,10 +625,19 @@ function heatData(rows, span) {
     unit,
     unitLabel: unit === "month" ? "按月" : unit === "week" ? "按周" : "按天",
     cols,
-    titles: cols.map((t) => chart.bucketTitle(t, unit)),
+    firstDay,
+    titles: cols.map((t, i) => colTitle(t, unit, firstDay[i], lastDay[i])),
     data,
     max
   };
+}
+
+// 提示框标题，写法和驾驶统计的里程走势一样：按周写实际的起止日期，按月不完整的月份在月份后面括上实际几号到几号
+function colTitle(t, unit, first, last) {
+  if (unit === "day") return chart.bucketTitle(t, unit);
+  if (unit === "week") return fmt.dateRange(first, last);
+  const whole = first === t && chart.bucketEnd(last, "day") === chart.bucketEnd(t, unit);
+  return whole ? chart.bucketTitle(t, unit) : `${chart.bucketTitle(t, unit)}（${fmt.dateRange(first, last)}）`;
 }
 
 // 横轴标签隔几列放一个，间隔按图宽自己挑，不交给 ECharts 自动隔：自动隔是从第一列起每 N 列留一个，
@@ -638,7 +652,8 @@ function heatLabels(h, width) {
   const at = h.cols.map((t) => new Date(t));
   const text = (i, withYear) => {
     if (h.unit === "month") return withYear ? fmt.month(h.cols[i]) : `${at[i].getMonth() + 1}月`;
-    return withYear ? fmt.dateAuto(h.cols[i]) : fmt.date(h.cols[i]);
+    // 按天、按周的写这一列在范围里的第一天（第一列不写成范围以前的周一）
+    return withYear ? fmt.dateAuto(h.firstDay[i]) : fmt.date(h.firstDay[i]);
   };
   // 每列多宽：扣掉左边电量档那一列刻度文字和留白（实测图宽 324 时横轴 266、430 时 369）
   const colW = Math.max(60, width - 64) / h.cols.length;

@@ -7,7 +7,7 @@ import * as api from "../core/api.js";
 import * as fmt from "../core/format.js";
 import * as chart from "../core/chart.js";
 import { DRIVE_ITEM_SQL, driveItem, groupByDay, lenText, lenDigits } from "./_drive-item.js";
-import { placeSql, driveStateSql, FIX_DOC } from "./_shared.js";
+import { placeSql, panelAddressSql, driveStateSql, FIX_DOC } from "./_shared.js";
 
 export const title = "行程";
 export const range = { default: "90d" };
@@ -27,11 +27,6 @@ function readFilters(q) {
   return { text, dist, geos };
 }
 
-// 地点搜索和面板一样匹配完整地址（围栏名，或「地名 / 路名 门牌, 城市」，写法照抄面板），
-// 另外也匹配列表里显示的短地名 —— 用户照着列表上看到的字搜（「百脉泉街8号」），得能搜到
-const FULL = (g, a) =>
-  `COALESCE(${g}.name, CONCAT_WS(', ', COALESCE(${a}.name, nullif(CONCAT_WS(' ', ${a}.road, ${a}.house_number), '')), ${a}.city))`;
-
 // WHERE 片段（表别名和 _drive-item.js 一致：d 行程、sa/ea 地址、sg/eg 围栏）
 function filterWhere(f) {
   const parts = ["$__timeFilter(d.start_date)"];
@@ -40,8 +35,9 @@ function filterWhere(f) {
   if (f.text) {
     // api.like：「包含」匹配，% _ \ 按字面；十六进制编码，前端变量替换和 Grafana 的宏展开都碰不到用户的字
     const like = api.like(f.text);
+    // 和面板一样匹配完整地址（panelAddressSql），另外也匹配列表里显示的短地名 —— 用户照着列表上看到的字搜（「百脉泉街8号」），得能搜到
     parts.push(
-      `(${FULL("sg", "sa")} ilike ${like} or ${FULL("eg", "ea")} ilike ${like} or ${placeSql("sg", "sa")} ilike ${like} or ${placeSql("eg", "ea")} ilike ${like})`
+      `(${panelAddressSql("sg", "sa")} ilike ${like} or ${panelAddressSql("eg", "ea")} ilike ${like} or ${placeSql("sg", "sa")} ilike ${like} or ${placeSql("eg", "ea")} ilike ${like})`
     );
   }
   return parts.join(" and ");
@@ -274,7 +270,8 @@ function bindFilters(ctx, f) {
   const input = form.querySelector("input[name=q]");
   form.addEventListener("submit", (e) => {
     e.preventDefault();
-    input.blur();
+    // 只在触屏上收起键盘；桌面上不 blur，重画后外壳才能把焦点放回搜索框（焦点掉到 body 上就找不回来了）
+    if (matchMedia("(pointer: coarse)").matches) input.blur();
     ctx.setQuery({ q: input.value.trim() || null });
   });
   input.addEventListener("search", () => {
@@ -293,7 +290,7 @@ function openSections(rows, n, ctx) {
   const total = Math.max(n, broken.length);
   return html`${live.length
     ? ui.section("正在行驶", ui.card(ui.list(live.map((r) => driveItem(r, ctx))), { pad: false, cls: "pg-drives-live" }), {
-        sub: "还没结束，不计入下面的统计"
+        sub: "还没结束，不计入统计"
       })
     : ""}${broken.length
     ? ui.section(

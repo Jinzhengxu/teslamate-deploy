@@ -294,8 +294,8 @@ async function loadData(ctx, slot) {
         action: { href: ctx.href("/stats/summary"), label: "按月汇总" },
         // 后半句整体不断开：320 宽下原来会剩一个「比」单独占一行
         sub: prevEmpty
-          ? html`${fmt.date(w.cur[0])} – 今天；<span class="pg-home-nobr">上月同期（${prevText}）没有记录</span>`
-          : html`${fmt.date(w.cur[0])} – 今天，<span class="pg-home-nobr">对比上月同期 ${prevText}</span>`
+          ? html`${fmt.date(w.cur[0])} – 今天；<span class="tm-nowrap">上月同期（${prevText}）没有记录</span>`
+          : html`${fmt.date(w.cur[0])} – 今天，<span class="tm-nowrap">对比上月同期 ${prevText}</span>`
       })}
       <div class="tm-grid-2">
         ${ui.section(
@@ -344,12 +344,13 @@ function liveHtml(live, ctx) {
     ? [
         live.first_soc != null && live.last_soc != null && `${live.first_soc}→${live.last_soc}%`,
         live.power > 0 && fmt.kw(live.power),
-        live.added > 0 && `已充 ${fmt.kwh(live.added, 1)}`,
+        // 「已充 / 已开」在列表行里是时长（CONVENTIONS (e)），这里是电量 / 距离，换个词免得同一页上两种意思
+        live.added > 0 && `充入 ${fmt.kwh(live.added, 1)}`,
         `${fmt.time(live.start_date)} 开始`
       ]
     : [
-        // 刚出发只有一个位置点时差是 0，不写「已开 0.0 km」
-        live.distance > 0 && `已开 ${lenText(live.distance)}`,
+        // 刚出发只有一个位置点时差是 0，不写「开了 0.0 km」
+        live.distance > 0 && `开了 ${lenText(live.distance)}`,
         live.speed != null && fmt.speed(live.speed),
         `${fmt.time(live.start_date)} 出发`
       ];
@@ -400,7 +401,8 @@ function batteryHtml(b, ctx) {
   const degr = hasCap ? Math.max(0, 100 - (b.current_capacity * 100) / b.max_capacity) : null;
   // 面板的衰减表盘：10% 以下绿、10–20% 黄、20% 以上红
   const tone = degr == null ? "" : degr < 10 ? "green" : degr < 20 ? "amber" : "red";
-  const lost = b.max_range != null && b.current_range != null ? b.max_range - b.current_range : null;
+  // 先按显示的精度（整 km / mi）取整再相减：两端各自取整后再算差，才和卡片上的两个数、电池健康页的「新车 N（−N）」对得上
+  const lost = b.max_range != null && b.current_range != null ? Math.round(b.max_range) - Math.round(b.current_range) : null;
   return html`<a class="tm-card pg-home-batt" href="${ctx.href("/stats/battery")}">
     <div class="pg-home-batt-head">
       <span class="pg-home-batt-title">${ui.icon("battery-heart-variant")}电池健康</span>
@@ -417,7 +419,7 @@ function batteryHtml(b, ctx) {
         <span class="pg-home-batt-value tm-num">${fmt.len(b.current_range)}</span>
         ${
           b.max_range != null
-            ? ui.segs([`新车 ${fmt.len(b.max_range)}`, lost >= 0.5 && `少 ${fmt.len(lost)}`], { cls: "pg-home-fact-sub" })
+            ? ui.segs([`新车 ${fmt.len(b.max_range)}`, lost >= 1 && `少 ${fmt.len(lost)}`], { cls: "pg-home-fact-sub" })
             : html`<span class="pg-home-fact-sub">—</span>`
         }
       </div>
