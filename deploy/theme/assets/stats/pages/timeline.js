@@ -218,7 +218,7 @@ export async function render(ctx) {
   ctx.setGrafanaVars(grafanaVars(f));
   ctx.root.classList.add("pg-tl");
 
-  ui.render(ctx.root, ui.skeleton(["stats", "list"]));
+  ui.render(ctx.root, ui.skeleton("list-layout", { sticky: true, dense: true, chart: false }));
 
   const d = await api.batch(
     { drives: DRIVES_SQL, charges: CHARGES_SQL, park: PARK_SQL, missing: MISSING_SQL, updates: UPDATES_SQL, live: LIVE_SQL },

@@ -148,20 +148,6 @@ order by date`;
 
 // ---------------------------------------------------------------- 格式化小工具
 
-// 行程用时精确到秒（面板的 Drive Duration 也是）：17分30秒 / 1小时5分。
-// 和面板一样按钟表的走法向下取整（Drive Duration、速度分布的 Time 列都是截掉零头）：
-// 1008.7 秒是「16分48秒」，3:20:53 是「3小时20分」
-function durSec(sec) {
-  if (sec == null || !Number.isFinite(+sec)) return fmt.DASH;
-  const s = Math.floor(+sec);
-  if (s < 60) return `${s}秒`;
-  if (s < 3600) return `${Math.floor(s / 60)}分${s % 60 ? (s % 60) + "秒" : ""}`;
-  // 一小时以上只到分钟
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  return h >= 24 ? fmt.duration(s / 60) : `${h}小时${m ? m + "分" : ""}`;
-}
-
 // 变化很小的曲线（短途的电量只差 1%、胎压只差 0.1 bar）让坐标轴至少跨 span，不然一格的变化看着像断崖
 function atLeast(values, span, { lo = -Infinity, hi = Infinity, step } = {}) {
   const v = values.filter((x) => x != null && Number.isFinite(+x)).map(Number);
@@ -340,11 +326,12 @@ function openKv(r, rg, state) {
 
 function mainStats(r, rg) {
   const per100 = r.consumption != null && fmt.unit.len === "km" ? `${fmt.num(r.consumption / 10, 1)} kWh/百公里` : null;
-  const used = r.start_range != null && r.end_range != null ? r.start_range - r.end_range : null;
+  // 和下面「续航 493 km → 143 km」一样，用显示出来的两头相减
+  const used = fmt.roundDiff(r.start_range, r.end_range);
   return ui.stats(
     [
       { label: "距离", icon: "road-variant", value: r.distance, digits: lenDigits(r.distance), unit: fmt.unit.len, sub: used != null ? `续航少了 ${fmt.len(used, 0)}` : null },
-      { label: "用时", icon: "clock-outline", value: durSec(r.seconds), sub: timeSpan(r.start_date, r.end_date) },
+      { label: "用时", icon: "clock-outline", value: fmt.durationClock(r.seconds), sub: timeSpan(r.start_date, r.end_date) },
       { label: "耗电（净）", icon: "lightning-bolt", value: r.energy, digits: 1, unit: "kWh", sub: "按续航减少估算" },
       { label: "能耗（净）", icon: "leaf", value: r.consumption, unit: fmt.unit.cons, sub: per100 },
       { label: "平均速度", icon: "speedometer", value: rg.speed_avg, unit: fmt.unit.speed, sub: "位置点车速的平均" },
@@ -357,7 +344,8 @@ function mainStats(r, rg) {
 function detailKv(r, rg, recovered, settings) {
   const rangeLabel = settings.preferredRange === "ideal" ? "续航（理想）" : "续航（表显）";
   const socDiff = r.start_soc != null && r.end_soc != null ? r.end_soc - r.start_soc : null;
-  const rangeDiff = r.start_range != null && r.end_range != null ? r.end_range - r.start_range : null;
+  // 用显示出来的两头相减，和前面的「318 km → 256 km」自己减一下对得上
+  const rangeDiff = fmt.roundDiff(r.end_range, r.start_range);
   // 冷车时可用电量比显示电量低（「续航打折」），不一样时才单独列出来
   const usableDiffers = r.start_usable != null && (r.start_usable !== r.start_soc || r.end_usable !== r.end_soc);
   const eff = r.efficiency != null && r.efficiency > 0 ? r.efficiency * 100 : null;
@@ -644,7 +632,7 @@ function drawHist(ctx, histRows) {
       // fillBins 补出来的空档不写时长（「0秒」和上一行的 0% 重复）
       return chart.tipHtml(`${fmt.int(x.speed)} ${u} 左右`, [
         { color: p.color, name: "占行程时间", value: fmt.share(x.pct) },
-        x.seconds > 0 ? { name: "时长", value: durSec(x.seconds) } : null
+        x.seconds > 0 ? { name: "时长", value: fmt.durationClock(x.seconds) } : null
       ]);
     }),
     // 档位多（长途 10~130）时小于 5% 的柱子不标数，不然矮柱子上的「1%」「3%」挤成一团

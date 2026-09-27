@@ -110,6 +110,16 @@ export function signed(v, f = 0) {
   return (s === text(0) ? "" : +v < 0 ? "−" : "+") + s;
 }
 
+// 两个数「显示出来的样子」相减：各自先按 digits 位小数四舍五入再相减（538 km、新车 544 → −6）。
+// 没取整时先相减再取整，会出现「538 km」「新车 544（−7）」这种自己减一下对不上的。
+// 取整用 toFixed，和 num（Intl）一样按精确值、五入远离零，负数也和显示的一致；任何一边是空值返回 null
+export function roundDiff(a, b, digits = 0) {
+  if (!ok(a) || !ok(b)) return null;
+  const round = (v) => +(+v).toFixed(digits);
+  // 结果再取一次，去掉 75.3 − 75.1 = 0.2000000000000028 这种浮点零头
+  return round(round(a) - round(b));
+}
+
 // 大数字压缩：12,345 → "1.2万"
 const compactFmt = new Intl.NumberFormat("zh-CN", { notation: "compact", maximumFractionDigits: 1 });
 export function compact(v) {
@@ -329,6 +339,18 @@ export function duration(min) {
   if (days > 0) return `${sign}${days}天${hours ? hours + "小时" : ""}`;
   if (hours > 0) return `${sign}${hours}小时${mins ? mins + "分" : ""}`;
   return `${sign}${mins}分`;
+}
+
+// 按秒算、按钟表的走法向下取整的时长（行程的「用时」、充电详情的时长，和 Grafana 的 Duration 一样截掉零头，
+// 四舍五入到分钟会比面板多出 1 分钟）：不到一小时带秒「47分42秒」，1–24 小时只到分钟「1小时58分」，再长同 duration「2天3小时」
+export function durationClock(sec) {
+  if (!ok(sec)) return DASH;
+  const s = Math.floor(+sec);
+  if (s < 60) return `${s}秒`;
+  if (s < 3600) return `${Math.floor(s / 60)}分${s % 60 ? (s % 60) + "秒" : ""}`;
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return h >= 24 ? duration(s / 60) : `${h}小时${m ? m + "分" : ""}`;
 }
 
 // 累计驾驶时间（行程页的「驾驶时长」、驾驶统计「共统计了 …」、时间线、旅程）按小时说：「2天5小时」容易被读成日历上的两天，

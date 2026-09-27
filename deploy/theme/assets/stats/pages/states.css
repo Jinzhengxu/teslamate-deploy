@@ -43,8 +43,18 @@
 @media screen and (min-width: 1024px) {
   .pg-states-layout {
     grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
-    align-items: start;
     gap: 24px;
+  }
+
+  /* 两栏的卡片一样高（和核心 .tm-grid-2 里并排的小节一样）：小节竖排，最后一张卡片撑满剩下的高度，
+     图和列表照常靠上，底边对齐 */
+  .pg-states-layout > .tm-section {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .pg-states-layout > .tm-section > .tm-card:last-child {
+    flex: 1 1 auto;
   }
 }
 

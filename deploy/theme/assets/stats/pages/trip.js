@@ -184,8 +184,9 @@ select cost_per_kwh / nullif(distance, 0) * 100 as cost_mileage from mileage cro
 )
 select current, sum(energy_added) as energy from charges_current group by 1`,
 
-  // 面板没有的补充：行程次数（含未结束的，和面板的行程表一致）、最高速度
-  drives: `select count(*) as n, max(convert_km(speed_max::numeric, '$length_unit')) as speed_max,
+  // 面板没有的补充：行程次数、最高速度。次数不算没结束的（正在行驶、中途断掉），和其它合计一个口径；
+  // n_all 连没结束的也算，给下面同样列出没结束的行程列表用
+  drives: `select count(*) filter (where end_date is not null) as n, count(*) as n_all, max(convert_km(speed_max::numeric, '$length_unit')) as speed_max,
        min(start_date) as first_start, max(coalesce(end_date, start_date)) as last_end
 from drives where car_id = $car_id and $__timeFilter(start_date)`
 };
@@ -368,10 +369,12 @@ export async function render(ctx) {
   );
 
   const one = (k) => d[k][0] || {};
-  const nDrives = one("drives").n || 0;
+  const nDrives = +one("drives").n || 0;
+  // 下面的行程列表连没结束的也列（和充电列表一样），列表的条数、分页按这个
+  const nListed = +one("drives").n_all || 0;
   const charges = d.chargeList;
 
-  if (!nDrives && !charges.length) {
+  if (!nListed && !charges.length) {
     ui.render(
       ctx.root,
       ui.card(
@@ -437,7 +440,8 @@ export async function render(ctx) {
       { label: "充电时长", icon: "ev-station", value: hours(chargeSec), sub: chargeSub },
       { label: "最高速度", icon: "speedometer", value: dr.speed_max, unit: fmt.unit.speed },
       // 面板「Ø Speed incl. DC charging」：路上停下来快充的时间也算进去，更接近「到目的地要多久」
-      { label: "全程均速", icon: "speedometer", value: one("speedDc").speed, unit: fmt.unit.speed, sub: "含直流充电时间" },
+      // 这段时间没有（已结束的）直流充电时和「均速」是同一个数，不写「含直流充电时间」
+      { label: "全程均速", icon: "speedometer", value: one("speedDc").speed, unit: fmt.unit.speed, sub: chg.DC > 0 ? "含直流充电时间" : null },
       { label: "能耗（净）", icon: "leaf", value: one("consNet").consumption, unit: fmt.unit.cons, sub: gross.consumption != null ? `毛 ${fmt.cons(gross.consumption)}` : null },
       { label: "耗电（毛）", icon: "lightning-bolt", value: gross.energy, digits: kwhDigits(gross.energy), unit: "kWh", sub: "含停车、空调等" },
       { label: "充入电量", icon: "battery-charging-high", value: addedTotal > 0 ? addedTotal : null, digits: kwhDigits(addedTotal), unit: "kWh", sub: addedSub },
@@ -455,6 +459,8 @@ export async function render(ctx) {
     { label: "停车等", sec: otherSec, color: "var(--tm-track)" }
   ].filter((x) => x.sec > 0);
   const allocSum = alloc.reduce((s, x) => s + x.sec, 0) || 1;
+  // 几段合起来是全程：用最大余数法分，图例的百分比加起来正好 100%
+  const allocShares = fmt.shares(alloc.map((x) => x.sec));
 
   ui.render(
     ctx.root,
@@ -476,7 +482,7 @@ export async function render(ctx) {
           </div>
           <div class="pg-trip-alloc-legend">
             ${alloc.map(
-              (x) => html`<div><i style="background:${x.color}"></i><span>${x.label}</span><b class="tm-num">${hours(x.sec)}</b><em class="tm-num">${fmt.share((x.sec / allocSum) * 100)}</em></div>`
+              (x, i) => html`<div><i style="background:${x.color}"></i><span>${x.label}</span><b class="tm-num">${hours(x.sec)}</b><em class="tm-num">${allocShares[i]}</em></div>`
             )}
           </div>
           <div class="pg-trip-states">
@@ -494,8 +500,8 @@ export async function render(ctx) {
       <div class="tm-grid-2 pg-trip-lists">
         ${ui.section(
           "行程",
-          nDrives ? html`<div id="pg-trip-drives"></div>` : ui.card(ui.empty("这段时间没有行程。", { icon: "road-variant" })),
-          { sub: nDrives ? `${fmt.int(nDrives)} 次` : null }
+          nListed ? html`<div id="pg-trip-drives"></div>` : ui.card(ui.empty("这段时间没有行程。", { icon: "road-variant" })),
+          { sub: nListed ? `${fmt.int(nListed)} 次` : null }
         )}
         ${ui.section(
           "充电",
@@ -506,7 +512,7 @@ export async function render(ctx) {
     `
   );
 
-  drawDrives(ctx, d.driveList, nDrives);
+  drawDrives(ctx, d.driveList, nListed);
   drawCharges(ctx, charges);
 
   // ---- 明细（detailP 已经在路上了，和地图同时准备）

@@ -54,10 +54,11 @@ export function render(el, tpl) {
   return el;
 }
 
-// 画完之后要挂 JS 的公共部件：宽表格的滚动渐隐、统计数字放不下时缩小字号。render 和 pager 追加时自动调用；
-// 页面自己用 innerHTML / insertAdjacentHTML 插的表格、统计宫格没有这两样，别的照常
+// 画完之后要挂 JS 的公共部件：宽表格的滚动渐隐、统计数字放不下时缩小字号、分段选择滚到选中项。render 和 pager 追加时自动调用；
+// 页面自己用 innerHTML / insertAdjacentHTML 插的表格、统计宫格没有这几样，别的照常
 function hydrate(el) {
   if (!el.querySelectorAll) return;
+  for (const seg of el.querySelectorAll(".tm-seg")) segReveal(seg);
   if (fadeRO) {
     for (const w of el.querySelectorAll(".tm-table-wrap")) {
       fadeRO.observe(w);
@@ -401,6 +402,19 @@ export function segmented(name, options, value, { full, label, prefix, suffix } 
   return html`<div class="tm-seg-line${full ? " is-full" : ""}">${affix(prefix)}<span class="tm-seg-tail">${seg}${affix(suffix)}</span></div>`;
 }
 
+// 分段选择在窄屏上放不下时是横向滚动的，默认停在最左边：选中的是靠右的那档（续航变化默认的「6小时」）时
+// 会被切掉一半、看不出选的是哪个。滚到选中项整个露出来（只动这一条的 scrollLeft，不用 scrollIntoView，免得页面跟着滚）。
+// 没放进文档、藏着的（收起的筛选条）量不出宽度，跳过
+function segReveal(seg) {
+  const on = seg.querySelector('[aria-checked="true"]');
+  if (!on || seg.scrollWidth <= seg.clientWidth) return;
+  const box = seg.getBoundingClientRect();
+  const b = on.getBoundingClientRect();
+  // 多滚 8px，让左右还露出一点别的选项，看得出能滑
+  if (b.right > box.right) seg.scrollLeft += b.right - box.right + 8;
+  else if (b.left < box.left) seg.scrollLeft -= box.left - b.left + 8;
+}
+
 // 事件委托：root 里名为 name 的分段选择被点时调用 fn(value)。返回解绑函数
 export function onSegment(root, name, fn) {
   const sel = `.tm-seg[data-seg="${CSS.escape(name)}"]`;
@@ -467,11 +481,18 @@ const present = (x) => x != null && x !== false && x !== true && x !== "";
 
 // 一行放得下几项就显示几项，放不下的整项藏起来（不会截出半截字）：列表行的 sub / meta 在窄屏上用。
 // items 按重要程度从左到右排（null / false 跳过），先藏最后面的；第一项自己就放不下时才省略号截断。
-// sep: true 时项之间加「·」（默认靠 10px 间距分开，适合每项前面带小图标的写法）
-export function fit(items, { sep, cls } = {}) {
-  return html`<span class="tm-fit-line${sep ? " is-sep" : ""}${cls ? " " + cls : ""}">${items
+// sep: true 时项之间加「·」（默认靠 10px 间距分开，适合每项前面带小图标的写法）。
+// wrap: true 时第一项自己放不下一行就折成两行（在它里面的 .tm-nowrap 段之间折，配合 spanWrap），后面的项照样整项藏起来
+export function fit(items, { sep, wrap, cls } = {}) {
+  return html`<span class="tm-fit-line${sep ? " is-sep" : ""}${wrap ? " is-wrap" : ""}${cls ? " " + cls : ""}">${items
     .filter(present)
     .map((x) => html`<span>${x}</span>`)}</span>`;
+}
+
+// 列表行的时间段「9月21日 22:58–次日 00:20」（fmt.timeSpan 的写法，prefix 是前面的日期）分成「–」前后两段、各自不折行：
+// 窄屏放不下时只从「–」后面折，不把日期、「次日」拆开。放在 fit(…, { wrap: true }) 的第一项，或者本身能折行的地方
+export function spanWrap(start, end, prefix = "") {
+  return html`<span class="tm-nowrap">${prefix}${fmt.time(start)}–</span><span class="tm-nowrap">${fmt.endTime(start, end)}</span>`;
 }
 
 // 分段文字：按段折行，段与段之间「 · 」，折到下一行时行首不带「·」（「新车 520 km · 少 38 km」这种）
@@ -626,9 +647,11 @@ function skel(w, h, extra = "") {
   return raw(`<span class="tm-skel" style="width:${w};height:${h}px${extra}"></span>`);
 }
 
-// 加载中的占位：'stats' | 'list' | 'chart' | 'map' | 'kv'，也可以传数组按顺序拼
-export function skeleton(kind = "list", { rows = 5, height } = {}) {
+// 加载中的占位：'stats' | 'list' | 'chart' | 'map' | 'kv'，也可以传数组按顺序拼；
+// 'list-layout' 是列表页（行程、充电、时间线）的两栏布局，见 listLayoutSkeleton
+export function skeleton(kind = "list", { rows = 5, height, ...opts } = {}) {
   if (Array.isArray(kind)) return html`<div class="tm-page" aria-busy="true">${kind.map((k) => skeleton(k, { rows, height }))}</div>`;
+  if (kind === "list-layout") return listLayoutSkeleton({ rows, height, ...opts });
   let body;
   switch (kind) {
     case "stats":
@@ -659,6 +682,33 @@ export function skeleton(kind = "list", { rows = 5, height } = {}) {
       );
   }
   return html`<div aria-busy="true" aria-label="加载中">${body}</div>`;
+}
+
+// 列表页的骨架：和真的 .tm-list-layout 同一套结构，桌面上也是左栏（筛选条 + 汇总 + 柱状图）、右栏列表，
+// 手机上一列，加载完不会从「一整列」跳成两栏。筛选条的占位和收起的 filterBar 一样高（按钮 32px + 右边一行提示）。
+// 汇总每格三行（标题、数字、小字），和真的差不多高。
+// opts：sticky / wide（和页面的 .is-sticky / .is-wide 一致）、stats（汇总几格，默认 4）、dense（汇总是 ui.stats 的 dense）、
+//       chart（柱状图卡片：{ height, heightMobile } 和页面 chartBox 的一样，默认 170 / 150；false 不画）、rows（列表几行）
+function listLayoutSkeleton({ sticky, wide, stats: n = 4, dense, chart: ch = {}, rows = 5 } = {}) {
+  return html`<div class="tm-list-layout${sticky ? " is-sticky" : ""}${wide ? " is-wide" : ""}" aria-busy="true" aria-label="加载中">
+    <div class="tm-list-aside">
+      <div class="tm-filter"><div class="tm-filter-bar">${skel("96px", 32, ";flex:none;border-radius:10px")}${skel("150px", 12, ";max-width:45%")}</div></div>
+      <div class="tm-stats tm-skel-stats${dense ? " is-dense" : ""}">${Array.from(
+        { length: n },
+        () => html`<div class="tm-stat">${skel("50%", 12)}${skel("65%", 24)}${skel("75%", 11)}</div>`
+      )}</div>
+      ${ch ? chartCardSkeleton(ch) : ""}
+    </div>
+    <div class="tm-list-main">${skeleton("list", { rows })}</div>
+  </div>`;
+}
+
+// 列表页左栏的柱状图卡片：标题行（.tm-chart-head）+ 和 chartBox 同样高度变量的图，手机、桌面都和真的一样高
+function chartCardSkeleton({ height = 170, heightMobile = 150 }) {
+  return card(
+    html`<div class="tm-chart-head">${skel("35%", 14, ";margin:2px 0 3px")}${skel("20%", 14, ";margin:2px 0 3px")}</div>
+      <div class="tm-chart" style="--tm-chart-h:${+height}px;--tm-chart-h-m:${+heightMobile}px"><div class="tm-skel-chart" style="height:100%">${[38, 62, 45, 80, 56, 70, 30, 66, 50, 74].map((h) => skel("auto", 0, `;height:${h}%`))}</div></div>`
+  );
 }
 
 // ---------------------------------------------------------------- 图表 / 地图的占位容器

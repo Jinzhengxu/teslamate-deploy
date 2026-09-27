@@ -6,7 +6,7 @@ import * as fmt from "../core/format.js";
 import * as chart from "../core/chart.js";
 import * as map from "../core/map.js";
 import { chargeKind, spanText } from "./_charge-item.js";
-import { placeSql, placeFullSql, UNKNOWN_PLACE, chargeState, statePill, FIX_DOC } from "./_shared.js";
+import { placeSql, placeFullSql, addressSql, UNKNOWN_PLACE, chargeState, statePill, FIX_DOC } from "./_shared.js";
 
 export const title = "充电详情";
 export const range = null;
@@ -64,7 +64,7 @@ select
   cp.id, cp.start_date, cp.end_date, cp.duration_min,
   ${placeSql("g", "a")} as place,
   ${placeFullSql("g", "a")} as place_full,
-  nullif(concat_ws(', ', a.name, nullif(concat(a.road, a.house_number), ''), a.county, a.city), '') as address,
+  ${addressSql("a")} as address,
   cp.geofence_id, p.latitude, p.longitude,
   convert_km(p.odometer::numeric, '$length_unit') as odometer,
   coalesce(cp.charge_energy_added, c.c_added) as energy_added,
@@ -143,7 +143,7 @@ function geofenceLink(r) {
   return null;
 }
 
-// 标题下面那行地址：地名、路名门牌、区县、城市，开头和标题重复的去掉。
+// 标题下面那行地址：和行程详情、时间线的完整地址同一个写法（addressSql），开头和标题重复的去掉。
 // 在收藏点（「家」）充的电也写出实际地址，Grafana 在这种地方只显示收藏点名字
 function addressLine(address, place) {
   if (!address) return null;
@@ -185,21 +185,11 @@ function heroHtml(r, state) {
   );
 }
 
-// 时长按钟表截断（和 Grafana 充电详情的 Duration、行程详情的「用时」一样）：01:58:37 写「1小时58分」，
-// 不到一小时带秒「47分42秒」。四舍五入到分钟会比 Grafana 多出 1 分钟
-function clockDuration(sec) {
-  const s = Math.floor(+sec);
-  if (s < 60) return `${s}秒`;
-  if (s < 3600) return `${Math.floor(s / 60)}分${s % 60 ? (s % 60) + "秒" : ""}`;
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  return h >= 24 ? fmt.duration(s / 60) : `${h}小时${m ? m + "分" : ""}`;
-}
-
 function statsHtml(r, state) {
-  const dur = r.duration_s != null ? clockDuration(r.duration_s) : fmt.duration(r.duration_min);
+  const dur = r.duration_s != null ? fmt.durationClock(r.duration_s) : fmt.duration(r.duration_min);
   const socDelta = r.start_soc != null && r.end_soc != null ? r.end_soc - r.start_soc : null;
-  const rangeDelta = r.start_range != null && r.end_range != null ? r.end_range - r.start_range : null;
+  // 用显示出来的两头相减，和小字「318→256 km」自己减一下对得上
+  const rangeDelta = fmt.roundDiff(r.end_range, r.start_range);
   const loss = r.energy_used != null && r.energy_added != null ? Math.max(0, r.energy_used - r.energy_added) : null;
   // 时长的起止按 charges 的第一条、最后一条（和面板算时长的口径一样），和充电列表按过程起止算的时长可能差一两分钟。
   // 已结束的头部已经写了起止，小字只说明口径；没结束的写出算到了哪一条记录
@@ -312,18 +302,21 @@ export async function render(ctx) {
   const r = d.cp[0];
   if (!r) {
     const owner = d.owner[0] && ctx.cars.find((c) => c.id === d.owner[0].car_id);
+    const name = owner && (owner.label || owner.name);
+    // 页头和浏览器标题也写清楚是哪种情况（和行程详情一样），不然还是上一页的标题
+    ctx.setTitle(owner ? "不是这辆车的充电" : "找不到这次充电");
     ui.render(
       ctx.root,
       ui.card(
         owner
-          ? ui.empty(`这次充电属于「${owner.label || owner.name}」。`, {
+          ? ui.empty(`这次充电属于「${name}」。`, {
               icon: "car-multiple",
               title: "不是这辆车的充电",
-              action: ui.button(`切换到${owner.label || owner.name}`, { kind: "soft", href: ctx.href(`/stats/charges/${id}`, { car: owner.id }) })
+              action: ui.button(`切换到${name}`, { kind: "soft", href: ctx.href(`/stats/charges/${id}`, { car: owner.id }) })
             })
-          : ui.empty("这条充电记录不存在，可能已经被删除了。", {
+          : ui.empty(`没有编号 ${id} 的充电，可能已经被删除了。`, {
               icon: "ev-station",
-              title: "没有这次充电",
+              title: "找不到这次充电",
               action: ui.button("回到充电列表", { kind: "soft", href: ctx.href("/stats/charges") })
             })
       )

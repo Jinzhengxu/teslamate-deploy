@@ -86,7 +86,7 @@ export async function render(ctx) {
     "var-geofence": f.geos
   });
 
-  ui.render(ctx.root, ui.skeleton(["stats", "list"]));
+  ui.render(ctx.root, ui.skeleton("list-layout", { stats: 6 }));
 
   const d = await api.batch(
     {

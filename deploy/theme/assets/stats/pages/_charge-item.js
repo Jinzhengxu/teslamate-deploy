@@ -139,7 +139,8 @@ export function chargeItem(row, ctx, { date = true } = {}) {
     tone: kind.tone,
     title,
     // 时间段最要紧，其次时长：窄屏上放不下时整项藏掉时长
-    sub: ui.fit([`${when}${spanText(row.start_date, row.end_date)}`, fmt.duration(row.duration_min)]),
+    // 带日期的时间段在 320 宽的手机上一行放不下，从「–」后面折成两行（不截成省略号）
+    sub: ui.fit([ui.spanWrap(row.start_date, row.end_date, when), fmt.duration(row.duration_min)], { wrap: true }),
     meta: html`${ui.pill(kind.label + peak, kind.tone)}${socHtml}`,
     value: fmt.kwh(row.energy_added, 1),
     // 费用为空很常见（公共桩没填、TeslaMate 没配单价），写明「未计费」比一个「—」好懂

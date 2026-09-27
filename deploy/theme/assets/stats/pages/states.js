@@ -220,7 +220,8 @@ function summary(ctx, { last, parkedRow, live, segs, tot, covered }) {
     {
       label: "休眠占比",
       icon: "sleep",
-      value: covered > 0 ? shareNum((tot[4] / covered) * 100) : null,
+      // 和下面「累计时长」里休眠那一行是同一个数（stateShares）；单位另外写，去掉文字里的 %
+      value: covered > 0 ? stateShares(tot)[4].replace(/%$/, "") : null,
       unit: "%",
       // 「本范围 · 290天19小时」320 宽放不下：整项藏掉时长（下面「累计时长」里有），不截成半截
       sub: covered > 0 ? ui.fit(["本范围", fmt.duration(tot[4] / 60e3)], { sep: true }) : null
@@ -236,16 +237,23 @@ function shareNum(p) {
 
 // ---------------------------------------------------------------- 累计时长
 
+// 各状态占总时长的百分比，按状态码取：各状态合起来是全部，用最大余数法分，加起来正好 100%
+// （各自四舍五入常常是 101%）。「休眠占比」那一格也用这个，和列表里的对得上
+function stateShares(tot) {
+  const text = fmt.shares(ORDER.map((c) => tot[c]));
+  return Object.fromEntries(ORDER.map((c, i) => [c, text[i]]));
+}
+
 function durationList(tot, covered) {
   const rows = ORDER.filter((c) => tot[c] > 0).sort((a, b) => tot[b] - tot[a]);
   const max = Math.max(...rows.map((c) => tot[c]));
+  const shares = stateShares(tot);
   return html`<div class="pg-states-list">${rows.map((c) => {
     const s = STATES[c];
-    const share = (tot[c] / covered) * 100;
     return html`<div class="pg-states-item is-${s.key}">
       <div class="pg-states-item-head">
         <span class="pg-states-item-name"><i></i>${s.label}</span>
-        <span class="tm-num"><b>${fmt.duration(tot[c] / 60e3)}</b><span class="tm-muted"> · ${shareNum(share)}%</span></span>
+        <span class="tm-num"><b>${fmt.duration(tot[c] / 60e3)}</b><span class="tm-muted"> · ${shares[c]}</span></span>
       </div>
       <div class="pg-states-bar"><span style="width:${((tot[c] / max) * 100).toFixed(2)}%"></span></div>
     </div>`;

@@ -194,12 +194,12 @@ export async function render(ctx) {
     // 窄屏上一行放不下时从后往前整项藏
     const where = [x.neighbourhood, x.city, x.state !== x.city ? x.state : null, oneCountry ? null : x.country].filter((v) => v && v !== name);
     const drives = drivesHref(ctx, { geofenceId: x.geofence_id, place: (x.name || "").trim() || null });
-    const links = html`${drives ? html`<a class="pg-loc-link" href="${drives}">相关行程</a>` : ""}${
+    const links = html`${drives ? html`<a class="pg-loc-link tm-hit" href="${drives}">相关行程</a>` : ""}${
       x.geofence_id != null
         ? // 面板的 Geo-fences 表点名字去编辑收藏点；这里点收藏点标签去编辑
-          html`<a class="pg-loc-fence" href="/geo-fences/${+x.geofence_id}/edit" title="编辑收藏点">${ui.pill(x.geofence, "accent", { icon: "home-map-marker" })}</a>`
+          html`<a class="pg-loc-fence tm-hit" href="/geo-fences/${+x.geofence_id}/edit" title="编辑收藏点">${ui.pill(x.geofence, "accent", { icon: "home-map-marker" })}</a>`
         : Number.isFinite(+x.latitude) && Number.isFinite(+x.longitude)
-          ? html`<a class="pg-loc-link" href="${`/geo-fences/new?lat=${+x.latitude}&lng=${+x.longitude}`}">设为收藏点</a>`
+          ? html`<a class="pg-loc-link tm-hit" href="${`/geo-fences/new?lat=${+x.latitude}&lng=${+x.longitude}`}">设为收藏点</a>`
           : ""
     }`;
     return {

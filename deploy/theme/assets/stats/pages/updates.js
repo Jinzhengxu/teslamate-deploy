@@ -192,7 +192,7 @@ function versionCell(v, r) {
   const url = releaseNotes(v);
   const hash = r.version_full && r.version_full !== v ? String(r.version_full).slice(String(v).length).trim() : "";
   return html`<span class="pg-updates-ver">${url
-    ? html`<a href="${url}" target="_blank" rel="noopener" title="更新说明">${v}${ui.icon("open-in-new", { cls: "pg-updates-ext" })}</a>`
+    ? html`<a class="tm-hit" href="${url}" target="_blank" rel="noopener" title="更新说明">${v}${ui.icon("open-in-new", { cls: "pg-updates-ext" })}</a>`
     : v}${hash ? html`<span class="pg-updates-hash">${hash}</span>` : ""}</span>`;
 }
 

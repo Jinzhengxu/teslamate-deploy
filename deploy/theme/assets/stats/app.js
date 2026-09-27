@@ -20,6 +20,8 @@ const doc = document;
 const root = doc.documentElement;
 const THEME_KEY = "tm-stats-theme";
 const CAR_KEY = "tm-stats-car";
+// 上次打开时有几辆车：刚打开、车辆列表还没取回来时，据此给页头的换车按钮先留出位置（页头不会晚一拍再往下挤）
+const CARS_KEY = "tm-stats-cars";
 
 function store(key, value) {
   try {
@@ -137,6 +139,8 @@ function pickCar(param) {
 let seq = 0;
 let page = null; // 当前页面：{ controller, cleanups, ctx, route, mod, range }
 const moduleCache = new Map();
+// 已经加载好的模块（文件名 → 模块）：换页时页头先画的「加载中」那一版据此知道这页有没有范围条
+const loadedMods = new Map();
 
 // 模块加载失败时浏览器只说「Failed to fetch dynamically imported module」：登录过期（Caddy 回 401 登录页）
 // 和断网都是这句，用 api.loadError 探一下，登录过期的显示「重新登录」，断网的显示「连不上服务器」
@@ -146,7 +150,10 @@ function importPage(file, bust) {
     throw await api.loadError(`/stats/pages/${file}`, e);
   });
   moduleCache.set(file, p);
-  p.catch(() => moduleCache.delete(file));
+  p.then(
+    (mod) => loadedMods.set(file, mod),
+    () => moduleCache.delete(file)
+  );
   return p;
 }
 
@@ -291,8 +298,9 @@ function pageTitle(t) {
   doc.title = t && t !== "统计" ? `${t} · 统计 · TeslaMate` : "统计 · TeslaMate";
 }
 
-// r：范围条；rangePending：默认范围还在算（range.auto），先放一个占位的范围条
-function renderHead({ title, route, r, car, loading, rangePending }) {
+// r：范围条；rangePending：范围还定不下来（range.auto 在算、页面模块或设置还没加载完），先放一个占位的范围条；
+// carPending：车辆列表还没取回来、上次打开时有好几辆车，先给换车按钮留出位置
+function renderHead({ title, route, r, car, loading, rangePending, carPending }) {
   const st = history.state || {};
   const isHome = route && route.path === "/stats/";
   const parent = (route && route.parent) || "/stats/";
@@ -308,11 +316,15 @@ function renderHead({ title, route, r, car, loading, rangePending }) {
         <h1 class="tm-title" id="tm-title" tabindex="-1">${title}</h1>
         ${route && !loading
           ? html`<button type="button" class="tm-icon-btn" data-tm-more aria-label="更多操作" aria-haspopup="dialog" aria-expanded="false">${icon("dots-horizontal")}</button>`
-          : ""}
+          : route
+            ? html`<span class="tm-icon-btn is-placeholder" aria-hidden="true"></span>`
+            : ""}
       </div>
       ${multi
         ? html`<button type="button" class="tm-car-btn" data-cars aria-haspopup="dialog" aria-expanded="false" aria-label="切换车辆，当前：${car.label}">${icon("car-side")}<span>${car.label}</span>${icon("chevron-down")}</button>`
-        : ""}
+        : carPending
+          ? html`<div class="tm-car-btn" aria-hidden="true">${icon("car-side")}<span class="tm-skel" style="width:96px;height:14px"></span></div>`
+          : ""}
       ${r ? range.bar(r) : rangePending ? range.barPending() : ""}`
   );
 }
@@ -517,7 +529,9 @@ async function show({ scroll = 0, restore = false, bust = false, focus = null } 
   const current = page;
   ui._setScope(cleanups);
   pageTitle(route.title);
-  renderHead({ title: route.title, route, loading: true });
+  // 模块已经加载过的（站内换页）先把范围条、换车按钮的位置占上，模块到了以后页头只是填上内容，不会往下挤
+  const known = loadedMods.get(route.module);
+  renderHead({ title: route.title, route, car, loading: true, rangePending: !!(known && known.range) });
 
   if (!car && !route.noCar) {
     renderHead({ title: route.title, route });
@@ -670,7 +684,11 @@ async function show({ scroll = 0, restore = false, bust = false, focus = null } 
     // 链接里的参数不对、登录过期、断网都是预料之中的情况，不算程序错误
     if (!e.badParam && !e.auth && !e.network) console.error(e);
     if (e.badParam) {
-      render(view, ui.card(ui.empty(e.message, { icon: "help-circle-outline", title: "找不到这条记录", action: ui.button("返回", { href: href(route.parent || "/stats/"), kind: "soft" }) })));
+      // 和详情页自己的「找不到」一样：标题、浏览器标签页都改成「找不到这条记录」，按钮写回哪一页（「回到行程列表」）
+      const parent = route.parent || "/stats/";
+      const parentTitle = route.parent ? `${(byPath(parent) || { title: "" }).title}列表` : "统计";
+      ctx.setTitle("找不到这条记录");
+      render(view, ui.card(ui.empty(e.message, { icon: "help-circle-outline", title: "找不到这条记录", action: ui.button(`回到${parentTitle}`, { href: href(parent), kind: "soft" }) })));
     } else {
       render(view, ui.card(ui.error(e, () => show({ scroll: null }))));
     }
@@ -694,20 +712,36 @@ async function boot() {
 
   const m = match(location.pathname);
   const route = m && m.route;
+  // 页头先按上次的车辆数、这页有没有范围条留好位置：模块一般比车辆和设置先到，到了有范围条就补上占位的
+  const title = route ? route.title : "统计";
+  const carPending = !!route && +store(CARS_KEY) > 1;
+  renderHead({ title, route, loading: true, carPending });
+  // init 有结果以后页头归 show() 管（或者显示出错），模块晚到也不再画占位的
+  let settled = false;
   // 模块和数据并行取
-  if (route) importPage(route.module).catch(() => {});
-  renderHead({ title: route ? route.title : "统计", route, loading: true });
+  if (route) {
+    importPage(route.module).then(
+      (mod) => {
+        if (!settled && mod.range) renderHead({ title, route, loading: true, carPending, rangePending: true });
+      },
+      () => {}
+    );
+  }
   render(viewEl, ui.skeleton(["stats", "list"]));
   progress.start();
 
   try {
     await api.init();
   } catch (e) {
+    settled = true;
     if (!e.auth && !e.network) console.error(e);
     progress.done();
+    renderHead({ title, route, loading: true });
     render(viewEl, ui.card(ui.error(e, () => boot())));
     return;
   }
+  settled = true;
+  store(CARS_KEY, String(api.cars.length));
   themeMode = api.settings.themeMode;
   store(THEME_KEY, themeMode);
   applyTheme();

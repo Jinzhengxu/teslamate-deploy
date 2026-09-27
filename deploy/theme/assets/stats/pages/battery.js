@@ -253,11 +253,9 @@ export async function render(ctx) {
   const deg = hasCap ? Math.max(0, 100 - (cap * 100) / capNew) : null;
   const health = deg == null ? null : Math.min(100, 100 - deg);
   const tone = healthTone(deg);
-  // 括号里的差值用显示出来的两个数相减（容量一位小数、续航取整）：没取整时相减再取整，
-  // 会出现「538 km」「新车 544（−7）」这种自己减一下对不上的
-  const round1 = (v) => Math.round(v * 10) / 10;
-  const capDiff = hasCap ? round1(cap) - round1(capNew) : null;
-  const rangeDiff = s.max_range != null && s.current_range != null ? Math.round(s.current_range) - Math.round(s.max_range) : null;
+  // 括号里的差值用显示出来的两个数相减（容量一位小数、续航取整），和旁边的数自己减一下对得上
+  const capDiff = hasCap ? fmt.roundDiff(cap, capNew, 1) : null;
+  const rangeDiff = fmt.roundDiff(s.current_range, s.max_range);
   const cycles = s.added != null && capNew > 0 ? Math.floor(s.added / capNew) : null;
   const stored = s.soc != null && cap != null ? (s.soc * cap) / 100 : null;
   const chargeEff = s.used > 0 ? s.added / s.used : null;

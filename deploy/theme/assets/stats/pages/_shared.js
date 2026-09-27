@@ -4,6 +4,7 @@
  * 地点名称：有地理围栏（家、公司）就用围栏名，否则用地址。g、a 是 SQL 里 geofences、addresses 表的别名。
  *   placeSql         短名字，列表行、标题用：地址自己的名字 → 路名门牌 → 街道 → 区县 → 城市
  *   placeFullSql     带城市，详情页用；和 Grafana 面板的写法一样，只是中文路名和门牌之间不加空格
+ *   addressSql       placeFullSql 不看围栏名的版本（在收藏点也写出实际地址），充电详情标题下面那行用
  *   panelAddressSql  逐字照抄 Grafana 面板的写法（路名和门牌之间有空格），只给「照面板的规则搜索地点」用
  * 前两个都可能是 NULL（没有反查到地址），页面自己显示「未知地点」。
  *
@@ -23,7 +24,13 @@ export function placeSql(g, a) {
 }
 
 export function placeFullSql(g, a) {
-  return `COALESCE(${g}.name, NULLIF(CONCAT_WS(', ', COALESCE(${a}.name, NULLIF(CONCAT(${a}.road, ${a}.house_number), '')), ${a}.city), ''))`;
+  return `COALESCE(${g}.name, ${addressSql(a)})`;
+}
+
+// placeFullSql 去掉围栏名的那一半：只看地址（「地名 / 路名门牌, 城市」）。充电详情在收藏点（「家」）充的电也要写出实际地址，
+// 用这个；写法和 placeFullSql 是同一个，各页的完整地址才长得一样
+export function addressSql(a) {
+  return `NULLIF(CONCAT_WS(', ', COALESCE(${a}.name, NULLIF(CONCAT(${a}.road, ${a}.house_number), '')), ${a}.city), '')`;
 }
 
 // 行程 / 时间线的地点搜索要和 Grafana 面板搜到的一样，所以写法逐字照抄面板（围栏名，或「地名 / 路名 门牌, 城市」）。

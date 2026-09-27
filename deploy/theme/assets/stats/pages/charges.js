@@ -228,7 +228,8 @@ function bindFilters(ctx, f) {
   const input = form.querySelector("input");
   form.addEventListener("submit", (e) => {
     e.preventDefault();
-    input.blur();
+    // 只在触屏上收起键盘；桌面上不 blur，重画后外壳才能把焦点放回搜索框（和行程页一样）
+    if (matchMedia("(pointer: coarse)").matches) input.blur();
     ctx.setQuery({ q: input.value.trim().slice(0, 60) || null });
   });
   input.addEventListener("search", () => {
@@ -381,8 +382,8 @@ function table(rows, ctx) {
 
 export async function render(ctx) {
   ctx.root.classList.add("pg-charges");
-  ui.render(ctx.root, ui.skeleton(["stats", "chart", "list"], { height: 150 }));
   const f = readFilters(ctx.query);
+  ui.render(ctx.root, ui.skeleton("list-layout", { wide: f.view === "table" }));
 
   const d = await api.batch(
     {

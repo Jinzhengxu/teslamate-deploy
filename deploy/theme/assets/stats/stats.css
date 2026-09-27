@@ -537,6 +537,11 @@ html:not([data-theme="dark"]) .tm-brand img {
   min-width: 0;
 }
 
+/* 加载中还没有「⋯」按钮：先放一个看不见的同样大小的，标题这一行不会在按钮出现时变高、把下面往下挤 */
+.tm-icon-btn.is-placeholder {
+  visibility: hidden;
+}
+
 /* 换页后外壳把焦点放到标题上（tabindex=-1，给读屏念新页面用），标题不是能点的东西，不画焦点框 */
 .tm-title:focus {
   outline: none;
@@ -1508,6 +1513,23 @@ a.tm-row:active {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* wrap：第一项可以折成两行，后面的项仍然只在第一行放得下时才显示。不能再靠限高一行藏：
+   后面的项高度设成 0（字照样画出来），行高只由第一项撑，整个盒子正好是第一项的高度；
+   挤到下一行的项画在盒子外面，被 overflow 裁掉 */
+.tm-fit-line.is-wrap {
+  max-height: none;
+  row-gap: 0;
+}
+
+.tm-fit-line.is-wrap > :first-child {
+  white-space: normal;
+}
+
+.tm-fit-line.is-wrap > * + * {
+  height: 0;
+  overflow: visible;
 }
 
 .tm-fit-line.is-sep {

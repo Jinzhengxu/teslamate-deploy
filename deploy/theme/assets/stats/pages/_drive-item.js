@@ -167,7 +167,8 @@ export function driveItem(row, ctx, { date = true } = {}) {
     icon: "road-variant",
     // 标题核心默认最多两行：「山姆会员商店(济南高新店) → 家」这种长地名不会把终点截没
     title: driveTitle(row),
-    sub: ui.fit([`${when}${fmt.timeSpan(row.start_date, row.end_date)}`, fmt.duration(row.duration_min)]),
+    // 和充电行一样：带日期的跨夜时间段放不下一行时从「–」后面折行
+    sub: ui.fit([ui.spanWrap(row.start_date, row.end_date, when), fmt.duration(row.duration_min)], { wrap: true }),
     meta,
     value: fmt.lenText(row.distance),
     valueSub: row.consumption != null ? fmt.cons(row.consumption) : row.energy != null ? fmt.kwh(row.energy, 1) : null

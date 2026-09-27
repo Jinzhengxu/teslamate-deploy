@@ -257,7 +257,10 @@ export async function render(ctx) {
     </div>`
   );
 
-  const drove = oc.max != null && oc.min != null ? oc.max - oc.min : null;
+  // 和旁边的「27,991 km」「期初 22,360 km」自己减一下对得上：两头按显示的样子取整再相减。
+  // 不到 100 时写一位小数（lenDigits），两头也按一位小数取
+  const droveDigits = lenDigits(oc.max != null && oc.min != null ? oc.max - oc.min : null);
+  const drove = fmt.roundDiff(oc.max, oc.min, droveDigits);
   const odoSection = ui.section(
     "里程",
     html`<div class="tm-stack">
@@ -268,7 +271,7 @@ export async function render(ctx) {
             label: "期间行驶",
             icon: "road-variant",
             value: drove,
-            digits: lenDigits(drove),
+            digits: droveDigits,
             unit: fmt.unit.len,
             sub: ctx.range.label
           },
