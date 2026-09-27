@@ -155,7 +155,6 @@ function drawList(el, items, noun) {
 
 export async function render(ctx) {
   const text = (ctx.query.get("q") || "").trim().slice(0, 60);
-  ctx.setGrafanaVars({ "var-address_filter": text || null });
 
   ui.render(ctx.root, ui.skeleton(["stats", "list"]));
 

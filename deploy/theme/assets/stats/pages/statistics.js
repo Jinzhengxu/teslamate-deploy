@@ -325,7 +325,6 @@ export async function render(ctx) {
   const period = api.oneOf(ctx.query.get("period"), PERIODS.map((p) => p.value), "month");
   const P = PERIODS.find((p) => p.value === period);
   ctx.setTitle(`${P.label}汇总`);
-  ctx.setGrafanaVars({ "var-period": period });
 
   ui.render(ctx.root, html`${periodBar(period)}${ui.skeleton(["stats", "chart", "list"])}`);
   // 事件委托在 ctx.root 上，后面整页重画也不用再绑。换周期只改 period：范围的默认值跟着周期走（见 range.default），

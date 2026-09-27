@@ -14,7 +14,7 @@ import * as fmt from "./core/format.js";
 import * as ui from "./core/ui.js";
 import { html, icon, render } from "./core/ui.js";
 import * as range from "./core/range.js";
-import { match, byPath, dashboardTitle } from "./pages/registry.js";
+import { match, byPath } from "./pages/registry.js";
 
 const doc = document;
 const root = doc.documentElement;
@@ -328,21 +328,6 @@ function renderHead({ title, route, r, car, loading, rangePending, carPending })
   );
 }
 
-function grafanaLink(uid, extra = {}) {
-  const p = page;
-  const params = {};
-  if (p && p.range) {
-    params.from = p.range.from;
-    params.to = p.range.to;
-  }
-  if (p && p.car) params["var-car_id"] = p.car.id;
-  if (p && p.route.grafanaVars) Object.assign(params, p.route.grafanaVars(p.params));
-  if (p && p.grafanaExtra) Object.assign(params, p.grafanaExtra);
-  // setGrafanaVars(obj, uid) 只给这个面板的（电量和里程页对应两个面板，各有各的变量）
-  if (p && p.grafanaByUid && p.grafanaByUid.has(uid)) Object.assign(params, p.grafanaByUid.get(uid));
-  return api.grafanaUrl(uid, { ...params, ...extra });
-}
-
 function onHeadClick(e) {
   if (!page) return;
   const p = page;
@@ -411,15 +396,6 @@ function runAuto(mod, actx, token) {
 function openMore(btn) {
   const p = page;
   const items = [];
-  const uids = p.route.grafana ? [].concat(p.route.grafana) : [];
-  for (const uid of uids) {
-    items.push({
-      label: uids.length > 1 ? `在 Grafana 中打开「${dashboardTitle(uid)}」` : "在 Grafana 中打开",
-      icon: "open-in-new",
-      href: grafanaLink(uid),
-      external: true
-    });
-  }
   items.push({
     label: "刷新数据",
     icon: "refresh",
@@ -524,7 +500,7 @@ async function show({ scroll = 0, restore = false, bust = false, focus = null } 
   const car = pickCar(url.searchParams.get("car"));
   const controller = new AbortController();
   const cleanups = [];
-  page = { controller, cleanups, route, params, car, range: null, rangeDefault: null, rangeAuto: null, title: route.title, grafanaExtra: null, grafanaByUid: new Map() };
+  page = { controller, cleanups, route, params, car, range: null, rangeDefault: null, rangeAuto: null, title: route.title };
   const current = page;
   ui._setScope(cleanups);
   pageTitle(route.title);
@@ -661,17 +637,8 @@ async function show({ scroll = 0, restore = false, bust = false, focus = null } 
     rerender() {
       if (page === current) show({ scroll: null, focus: "keep" });
     },
-    // 给页头「在 Grafana 中打开」的链接加参数（覆盖上一次设的；null 清掉）。值是数组时写成多个同名参数。
-    // 给了 uid 时只作用于那个面板的链接（一页对应多个面板时用），和不带 uid 设的参数叠加，同名的以它为准
-    setGrafanaVars(obj, uid) {
-      const v = obj ? { ...obj } : null;
-      if (uid == null) current.grafanaExtra = v;
-      else if (v) current.grafanaByUid.set(String(uid), v);
-      else current.grafanaByUid.delete(String(uid));
-    },
     navigate: (path, opts) => navigate(href(path), opts),
-    href,
-    grafanaLink
+    href
   };
 
   try {

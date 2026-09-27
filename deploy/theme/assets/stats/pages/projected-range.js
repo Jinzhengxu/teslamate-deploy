@@ -96,7 +96,6 @@ const IV_MS = { "5m": 300e3, "15m": 900e3, "30m": 1800e3, "1h": 3600e3, "3h": 10
 
 export async function render(ctx) {
   const iv = api.oneOf(ctx.query.get("iv"), INTERVALS.map((o) => o.value), DEFAULT_IV);
-  ctx.setGrafanaVars(iv === DEFAULT_IV ? null : { "var-interval": iv });
 
   ui.render(ctx.root, ui.skeleton(["stats", "chart", "chart"]));
 

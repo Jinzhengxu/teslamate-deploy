@@ -121,7 +121,6 @@ const shareText = (v) => (v == null ? null : `${shareNum(v)}%`);
 
 export async function render(ctx) {
   const dur = api.oneOf(ctx.query.get("duration"), DURATIONS, "6");
-  ctx.setGrafanaVars({ "var-duration": dur });
   ui.render(ctx.root, html`${filterBar(dur)}${ui.skeleton(["stats", "chart", "list"])}`);
   ui.onSegment(ctx.root, "duration", (v) => ctx.setQuery({ duration: v === "6" ? null : v }));
 

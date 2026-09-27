@@ -134,7 +134,6 @@ LIMIT 3`;
 
 export async function render(ctx) {
   const minDist = api.oneOf(ctx.query.get("min_distance"), MIN_DISTANCES, "1");
-  ctx.setGrafanaVars({ "var-min_distance": minDist });
   ui.render(ctx.root, ui.skeleton(["stats", "chart", "list"]));
 
   const d = await api.batch(

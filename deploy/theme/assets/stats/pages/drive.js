@@ -208,8 +208,6 @@ export async function render(ctx) {
 
   const rg = d.rng[0] || {};
   const state = driveState({ end_date: r.end_date, start_date: r.start_date, last_date: rg.to_ts });
-  // 页头「在 Grafana 中打开」：Drive Details 面板靠时间范围取数据（默认只看最近 12 小时），带上这次行程的起止
-  if (rg.from_ts && rg.to_ts) ctx.setGrafanaVars({ from: rg.from_ts, to: rg.to_ts });
   const recovered = d.recovered[0] ? d.recovered[0].kwh : null;
   const prev = d.nb.find((x) => x.start_date < r.start_date || (x.start_date === r.start_date && x.id < r.id));
   const next = d.nb.find((x) => x !== prev);

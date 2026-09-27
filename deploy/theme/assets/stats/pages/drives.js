@@ -79,13 +79,6 @@ export async function render(ctx) {
   const active = !!(f.text || f.dist > 0 || f.geos.length);
   const where = filterWhere(f);
 
-  ctx.setGrafanaVars({
-    "var-location": f.text || null,
-    "var-min_dist": f.dist > 0 ? f.dist : null,
-    // 多选：链接里写成多个 var-geofence（空数组就不带，面板默认是全部）
-    "var-geofence": f.geos
-  });
-
   ui.render(ctx.root, ui.skeleton("list-layout", { stats: 6 }));
 
   const d = await api.batch(

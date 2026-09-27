@@ -395,15 +395,6 @@ export async function render(ctx) {
     { signal: ctx.signal }
   );
 
-  // 页头「⋯ → 在 Grafana 中打开」带上同样的筛选（geofence 是多选，数组会写成多个 var-geofence）
-  ctx.setGrafanaVars({
-    "var-charge_type": f.type || null,
-    "var-location": f.text || null,
-    "var-min_duration_min": f.dur || null,
-    "var-cost": typeof f.cost === "number" && Number.isInteger(f.cost) ? f.cost : null,
-    "var-geofence": f.geos
-  });
-
   const rows = d.rows;
   const active = filterSummary(f, d.geofences).length > 0;
   const s = rows.length ? summarize(rows) : null;

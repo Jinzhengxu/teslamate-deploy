@@ -76,7 +76,7 @@
   // ---------------------------------------------------------------- 2. 导航
 
   // 导航里的「统计」：原生统计页（/stats/，deploy/theme/assets/stats/），代替原来那个列 Grafana 面板的「控制台」下拉。
-  // Grafana 原版面板从统计页右上角「⋯」里打开
+  // Grafana 原版面板不再放入口，直接访问 /grafana 还能打开
   var STATS_LABEL = { ja: "統計", ko: "통계", "zh-hans": "统计", "zh-hant": "統計" };
 
   var setupNav = safe(function () {

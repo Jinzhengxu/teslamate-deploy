@@ -139,8 +139,6 @@ const ODO_SQL = `WITH o AS (
 
 export async function render(ctx) {
   const band = ctx.query.get("band") !== "0";
-  // 面板默认就是开着的，关掉时才需要带给 Grafana；只加在「电量」面板的链接上，里程面板没有这个变量
-  ctx.setGrafanaVars(band ? null : { "var-include_average_percentiles": 0 }, "WopVO_mgz");
 
   // 窗口天数：面板变量 days_moving_average_percentiles 的算法（整数除法），半年 → 29 天
   const fromS = Math.floor(ctx.range.from / 1000);

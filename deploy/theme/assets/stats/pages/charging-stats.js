@@ -283,8 +283,6 @@ export async function render(ctx) {
   const s = d.sum[0] || {};
   const fences = d.geofences;
   const names = geoIds.map((id) => (fences.find((g) => g.id === id) || { name: `收藏点 #${id}` }).name);
-  // 页头「⋯ → 在 Grafana 中打开」带上同样的收藏点（多选写成多个 var-geofence，空数组就不带）
-  ctx.setGrafanaVars({ "var-geofence": geoIds });
 
   const filter = filterBar(ctx, fences, geoIds, names);
 

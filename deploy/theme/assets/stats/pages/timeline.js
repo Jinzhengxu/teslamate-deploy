@@ -19,13 +19,13 @@ export const css = true;
 // 一次画 50 条，「再显示」往后加：「全部」范围有两千多条，一次都画出来手机会卡
 const PAGE = 50;
 
-// 事件类型：顺序即筛选标签的顺序；grafana 是面板 action_filter 变量里对应的值
+// 事件类型：顺序即筛选标签的顺序
 const TYPES = [
-  { key: "drive", label: "行驶", icon: "road-variant", grafana: "🚗 Driving" },
-  { key: "charge", label: "充电", icon: "ev-station", grafana: "🔋 Charging" },
-  { key: "park", label: "停车", icon: "parking", grafana: "🅿️ Parking" },
-  { key: "missing", label: "数据缺失", icon: "map-marker-question-outline", grafana: "❓ Missing" },
-  { key: "update", label: "软件更新", icon: "update", grafana: "💾 Updating" }
+  { key: "drive", label: "行驶", icon: "road-variant" },
+  { key: "charge", label: "充电", icon: "ev-station" },
+  { key: "park", label: "停车", icon: "parking" },
+  { key: "missing", label: "数据缺失", icon: "map-marker-question-outline" },
+  { key: "update", label: "软件更新", icon: "update" }
 ];
 const TYPE_KEYS = TYPES.map((t) => t.key);
 // 同一时刻开始的两条（极少见）按这个顺序排
@@ -150,14 +150,6 @@ function readFilters(q) {
   return { types, text };
 }
 
-// 页头「在 Grafana 中打开」带上同样的筛选。多选时 Grafana 要重复的 var-action_filter 参数，链接工具只能带一个值，只选一类时才带
-function grafanaVars(f) {
-  return {
-    "var-action_filter": f.types.length === 1 ? TYPES.find((t) => t.key === f.types[0]).grafana : null,
-    "var-text_filter": f.text || null
-  };
-}
-
 // ---------------------------------------------------------------- 数据 → 事件
 
 const lower = (...xs) => xs.filter((x) => x != null && x !== "").join("\n").toLowerCase();
@@ -215,7 +207,6 @@ function parkMinutes(r) {
 
 export async function render(ctx) {
   const f = readFilters(ctx.query);
-  ctx.setGrafanaVars(grafanaVars(f));
   ctx.root.classList.add("pg-tl");
 
   ui.render(ctx.root, ui.skeleton("list-layout", { sticky: true, dense: true, chart: false }));
@@ -340,7 +331,6 @@ export async function render(ctx) {
     else u.searchParams.delete("q");
     // 列表换了一份，ui.pager 记在这条历史记录上的「已显示几条」不再作数（和 app.js 的 setQuery 一样）
     history.replaceState({ ...history.state, pager: undefined }, "", u);
-    ctx.setGrafanaVars(grafanaVars(f));
     syncBar();
   };
   // 筛选条摘要（「筛选 · 1 含「家」 清除」）按新的 f 重做。整个筛选条不能重画（输入框在里面），只换上面那一行；

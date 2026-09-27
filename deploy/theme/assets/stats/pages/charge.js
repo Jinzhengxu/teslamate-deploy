@@ -325,8 +325,6 @@ export async function render(ctx) {
   }
 
   ctx.setTitle(`${fmt.dateAuto(r.start_date)}的充电`);
-  // Grafana 的充电详情按时间范围画图：带上这次充电的起止，不然打开是空的
-  ctx.setGrafanaVars({ from: Math.floor(r.start_date), to: Math.ceil(r.end_date ?? r.last_date ?? r.start_date + 3600e3) });
 
   const rows = d.series;
   const state = chargeState(r);

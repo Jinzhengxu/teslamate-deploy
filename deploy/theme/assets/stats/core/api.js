@@ -617,7 +617,7 @@ export function oneOf(v, allowed, fallback) {
 // ---------------------------------------------------------------- 启动：数据源、设置、车辆
 
 const SETTINGS_SQL =
-  "select unit_of_length, unit_of_temperature, unit_of_pressure, preferred_range, base_url, grafana_url, theme_mode, language from settings limit 1";
+  "select unit_of_length, unit_of_temperature, unit_of_pressure, preferred_range, base_url, theme_mode, language from settings limit 1";
 // 显示名和 Grafana 的车辆下拉一致：重名时后面加 VIN 后 6 位，没名字时用 VIN。
 // since：这辆车最早的一条记录（行程 / 充电 / 位置点），「全部」这类早于接入时间的范围画时间轴时用。
 // 位置点只看带续航的：正好走 (car_id, date) 那个部分索引，几千万行的表也是一次索引查找；不带条件的 min(date) 要扫这辆车的全部位置点
@@ -638,7 +638,6 @@ function normSettings(r = {}) {
     pressureUnit: r.unit_of_pressure === "psi" ? "psi" : "bar",
     preferredRange: r.preferred_range === "ideal" ? "ideal" : "rated",
     baseUrl: r.base_url || "",
-    grafanaUrl: r.grafana_url || "",
     themeMode: ["light", "dark", "system"].includes(r.theme_mode) ? r.theme_mode : "system",
     language: r.language || "en"
   };
@@ -680,19 +679,3 @@ export function commonVars(car, s = settings || normSettings()) {
     base_url: s.baseUrl
   };
 }
-
-// Grafana 面板链接（同域 /grafana，不用 settings.grafana_url：那个可能填的是别的地址）。
-// 值是数组时逐个 append：Grafana 的多选变量要写成 var-geofence=1&var-geofence=2（拼成 "1,2" 它不认）。
-// null / "" 表示不带这个参数（数组里的也跳过）
-export function grafanaUrl(uid, params = {}) {
-  const q = new URLSearchParams({ orgId: "1" });
-  const ok = (v) => v != null && v !== "";
-  for (const [k, v] of Object.entries(params || {})) {
-    if (Array.isArray(v)) {
-      q.delete(k);
-      for (const x of v) if (ok(x)) q.append(k, String(x));
-    } else if (ok(v)) q.set(k, String(v));
-  }
-  return `${GRAFANA}/d/${encodeURIComponent(uid)}?${q}`;
-}
-
