@@ -53,7 +53,7 @@ export const ROUTES = [
   { path: "/stats/locations", module: "locations.js", title: "地点", group: "places", icon: "map-marker-multiple-outline", grafana: "ZzhF-aRWz", desc: "常去的城市、地址和收藏点" }
 ];
 
-// Grafana 原版面板（统计首页底部的列表）：TeslaMate 导航里原来的 19 个面板 + 荷兰税务报表
+// Grafana 原版面板的中文名（页头「更多」菜单里「在 Grafana 中打开「…」」用）：TeslaMate 导航里原来的 19 个面板 + 荷兰税务报表
 export const GRAFANA_DASHBOARDS = [
   { uid: "kOuP_Fggz", title: "概览", en: "Overview" },
   { uid: "Y8upc6ZRk", title: "行程", en: "Drives" },

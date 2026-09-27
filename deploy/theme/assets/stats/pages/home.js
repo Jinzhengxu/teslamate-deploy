@@ -1,5 +1,5 @@
 // 统计首页（/stats/）：这辆车的概况（对应 Grafana Overview 的一部分）、本月数字、最近的行程 / 充电、电池健康，
-// 再往下是各统计页的入口（分组来自 registry）和 Grafana 原版面板。
+// 再往下是各统计页的入口（分组来自 registry）。
 //
 // 数字的口径：
 //   概况：电量、续航、里程表、软件版本和 Overview 面板的 Battery Level / Range / Odometer / Firmware 一样取最近一条记录；
@@ -12,7 +12,7 @@ import { html } from "../core/ui.js";
 import * as ui from "../core/ui.js";
 import * as api from "../core/api.js";
 import * as fmt from "../core/format.js";
-import { entries, GRAFANA_DASHBOARDS } from "./registry.js";
+import { entries } from "./registry.js";
 import { DRIVE_ITEM_SQL, driveItem, lenText, lenDigits } from "./_drive-item.js";
 import { CHARGE_ITEM_SQL, chargeItem } from "./_charge-item.js";
 import { LIVE_SQL, chargeStateSql, driveStateSql, statePill } from "./_shared.js";
@@ -238,18 +238,18 @@ function delta(cur, prev, { lowerIsBetter = false } = {}) {
 
 export async function render(ctx) {
   const car = ctx.car;
-  // 首页在没有车辆数据时也能打开（registry 里 noCar）：只列入口和 Grafana 面板
+  // 首页在没有车辆数据时也能打开（registry 里 noCar）：只列入口
   if (!car) {
     ui.render(
       ctx.root,
       html`${ui.card(ui.empty("TeslaMate 记录到车辆数据后，这里会显示本月里程、最近的行程和充电。", { icon: "car-side", title: "还没有车辆数据" }))}
-        ${entriesHtml(ctx)}${grafanaHtml(ctx)}`
+        ${entriesHtml(ctx)}`
     );
     return;
   }
 
-  // 入口和 Grafana 列表不依赖数据，先画出来；数据块取不到时只在这一块里报错，下面的入口照样能用
-  ui.render(ctx.root, html`<div class="pg-home-slot" id="pg-home-data"></div>${entriesHtml(ctx)}${grafanaHtml(ctx)}`);
+  // 入口不依赖数据，先画出来；数据块取不到时只在这一块里报错，下面的入口照样能用
+  ui.render(ctx.root, html`<div class="pg-home-slot" id="pg-home-data"></div>${entriesHtml(ctx)}`);
   await loadData(ctx, ctx.root.querySelector("#pg-home-data"));
 }
 
@@ -450,7 +450,7 @@ function monthStats(cur, prev) {
   );
 }
 
-// ---------------------------------------------------------------- 入口、Grafana
+// ---------------------------------------------------------------- 入口
 
 function entriesHtml(ctx) {
   return entries().map((g) =>
@@ -467,18 +467,5 @@ function entriesHtml(ctx) {
         </a>`
       )}</div>`
     )
-  );
-}
-
-// 折叠起来：大多数时候用不到，展开是一串在新窗口打开的链接（带当前车辆）
-function grafanaHtml(ctx) {
-  return ui.details(
-    "Grafana 原版面板",
-    html`<div class="tm-links">${GRAFANA_DASHBOARDS.map(
-      (d) => html`<a href="${ctx.grafanaLink(d.uid)}" target="_blank" rel="noopener" title="${d.en}">
-        <span>${d.title}</span><small>${d.en}</small>${ui.icon("open-in-new")}
-      </a>`
-    )}</div>`,
-    { icon: "view-dashboard-outline", sub: "在 Grafana 里看原来的图表", cls: "pg-home-grafana" }
   );
 }

@@ -85,7 +85,7 @@
   --tm-skeleton-hi: rgba(17, 24, 39, 0.02);
   /* 页面左右留白：和 TeslaMate 的 main.section 一致 */
   --tm-gutter: 24px;
-  /* 和 TeslaMate 的 Bulma .container 同宽：在 TeslaMate 页面和统计页之间切换时，顶栏的 logo、导航不会左右跳 */
+  /* 和 TeslaMate 的 Bulma .container 同宽：在 TeslaMate 页面和统计页之间切换时，顶栏的导航不会左右跳 */
   --tm-max: 960px;
   color-scheme: light;
 }
@@ -283,32 +283,15 @@ strong {
   backdrop-filter: saturate(1.8) blur(18px);
 }
 
+/* 不放 logo，导航靠右 */
 .tm-top-inner {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   max-width: calc(var(--tm-max) + 2 * var(--tm-gutter));
   min-height: 56px;
   margin: 0 auto;
   padding: 0 var(--tm-gutter);
-}
-
-.tm-brand {
-  display: flex;
-  align-items: center;
-  height: 56px;
-}
-
-.tm-brand img {
-  display: block;
-  width: 104px;
-  height: auto;
-}
-
-/* logo 本身是白字，亮色主题下压成近黑色（同 theme.css） */
-html:not([data-theme="dark"]) .tm-brand img {
-  filter: brightness(0);
-  opacity: 0.88;
 }
 
 .tm-nav {
@@ -346,11 +329,6 @@ html:not([data-theme="dark"]) .tm-brand img {
   color: var(--tm-accent);
 }
 
-/* 桌面端 logo 就回首页，「主页」标签只在手机底栏用 */
-.tm-nav .tm-nav-home {
-  display: none;
-}
-
 /* TeslaMate 的导航（Bulma）右边伸出容器 12px，这里跟着伸出，两边切换时按钮位置不动 */
 @media screen and (min-width: 1024px) {
   .tm-nav {
@@ -361,16 +339,18 @@ html:not([data-theme="dark"]) .tm-brand img {
 /* ------------------------------------------------------------------ 手机 / 平板：底部标签栏（同 theme.css） */
 
 @media screen and (max-width: 1023px) {
+  /* 导航都在底栏，顶栏里没东西了：只留刘海的安全区，不画底色和分隔线 */
   .tm-top {
     position: relative;
+    border-bottom: 0;
+  }
+
+  .tm-top::before {
+    display: none;
   }
 
   .tm-top-inner {
-    min-height: 52px;
-  }
-
-  .tm-brand {
-    height: 52px;
+    min-height: 0;
   }
 
   body {
@@ -407,8 +387,7 @@ html:not([data-theme="dark"]) .tm-brand img {
     margin: 0 auto;
   }
 
-  .tm-nav a,
-  .tm-nav .tm-nav-home {
+  .tm-nav a {
     display: flex;
     flex: 1 1 0;
     flex-direction: column;
@@ -3272,85 +3251,6 @@ a.tm-rank-name:hover {
 
   .tm-entry + .tm-entry::before {
     display: none;
-  }
-}
-
-
-/* Grafana 原版面板：一串紧凑的链接 */
-.tm-links {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 8px;
-  padding: 6px;
-}
-
-.tm-links a {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  min-height: 40px;
-  padding: 6px 10px;
-  border-radius: var(--tm-r-sm);
-  color: var(--tm-text);
-  font-size: 14px;
-}
-
-.tm-links a span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tm-links a small {
-  margin-left: auto;
-  color: var(--tm-text-hint);
-  font-size: 12px;
-}
-
-.tm-links a .tm-svg {
-  width: 14px;
-  height: 14px;
-  color: var(--tm-text-3);
-}
-
-.tm-links a:hover {
-  background: var(--tm-surface-2);
-}
-
-@media screen and (min-width: 1024px) {
-  .tm-links {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-
-.tm-links a span {
-  flex: none;
-  max-width: 100%;
-}
-
-.tm-links a small {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* 放在折叠区里（ui.details）时去掉外面那圈留白、链接本身的左右内边距伸到两边：文字和折叠区标题的图标对齐 */
-.tm-details-body > .tm-links {
-  margin: 0 -10px;
-  padding: 0;
-}
-
-/* 手机上两列放不下英文名，只留中文 */
-@media screen and (max-width: 768px) {
-  .tm-links a small {
-    display: none;
-  }
-
-  .tm-links a .tm-svg {
-    margin-left: auto;
   }
 }
 

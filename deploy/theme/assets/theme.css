@@ -242,25 +242,13 @@ html .navbar.is-dark::before {
   backdrop-filter: saturate(1.8) blur(18px);
 }
 
+/* 不显示 TeslaMate 的 logo（导航里有「主页」）。navbar-brand 里还有汉堡按钮，只藏 logo 那一项 */
 html .navbar.is-dark .navbar-brand {
   min-height: 56px;
 }
 
-html .navbar.is-dark .navbar-brand > a.navbar-item {
-  padding: 0 12px;
-  background: transparent !important;
-}
-
-html .navbar .navbar-brand img {
-  width: 104px !important;
-  max-height: none;
-  height: auto;
-}
-
-/* logo 本身是白字，亮色主题下压成近黑色 */
-html:not([data-theme="dark"]) .navbar .navbar-brand img {
-  filter: brightness(0);
-  opacity: 0.88;
+html .navbar .navbar-brand > a.navbar-item {
+  display: none !important;
 }
 
 html .navbar.is-dark .navbar-item {
@@ -315,28 +303,31 @@ html .navbar .navbar-item .icon .mdi {
     background: var(--tm-accent-soft);
     color: var(--tm-accent);
   }
-
-  /* 桌面端 logo 本身就回首页，额外的「主页」标签只在手机底栏用 */
-  html .navbar .navbar-end > .tm-home {
-    display: none !important;
-  }
 }
 
 /* ------------------------------------------------------------------ 手机 / 平板：底部标签栏 */
 
 @media screen and (max-width: 1023px) {
+  /* 导航都在底栏，顶栏里没东西了：只留刘海的安全区，不画底色和分隔线 */
   html .navbar.is-dark {
     position: relative;
-    min-height: 52px;
+    min-height: 0;
   }
 
+  /* TeslaMate 的 [data-theme=…] .navbar.is-dark 也画了下边框，要比它更具体 */
+  html[data-theme] .navbar.is-dark,
+  html .navbar.is-dark {
+    border-bottom: 0;
+  }
+
+  html .navbar.is-dark::before {
+    display: none;
+  }
+
+  /* Bulma 给 .navbar > .container 和 .navbar-brand 都设了 52px 的最小高度 */
+  html .navbar.is-dark > .container,
   html .navbar.is-dark .navbar-brand {
-    min-height: 52px;
-  }
-
-  /* logo 和下面卡片的左边对齐（main.section 左右留白：平板 24px，手机 16px） */
-  html .navbar.is-dark .navbar-brand > a.navbar-item {
-    padding: 0 12px 0 24px;
+    min-height: 0;
   }
 
   html .navbar .navbar-burger {
@@ -437,12 +428,6 @@ html .navbar .navbar-item .icon .mdi {
   /* 原来列 Grafana 面板的「控制台」下拉由 theme.js 换成「统计」；万一脚本没跑，也别让它在底栏里摊开一长串 */
   html .navbar .navbar-end > .navbar-item.has-dropdown {
     display: none;
-  }
-}
-
-@media screen and (max-width: 768px) {
-  html .navbar.is-dark .navbar-brand > a.navbar-item {
-    padding-left: 16px;
   }
 }
 

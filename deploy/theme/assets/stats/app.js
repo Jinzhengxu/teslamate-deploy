@@ -88,7 +88,7 @@ const progress = (() => {
 // ---------------------------------------------------------------- 外壳
 
 const NAV = [
-  { href: "/", label: "主页", icon: "car-side", cls: "tm-nav-home" },
+  { href: "/", label: "主页", icon: "car-side" },
   { href: "/stats/", label: "统计", icon: "chart-box-outline", current: true },
   { href: "/geo-fences", label: "收藏点", icon: "map-marker-radius" },
   { href: "/settings", label: "设置", icon: "cog" }
@@ -103,12 +103,11 @@ function renderShell() {
     html`<div id="tm-progress" aria-hidden="true"></div>
       <header class="tm-top">
         <div class="tm-top-inner">
-          <a class="tm-brand" href="/" aria-label="TeslaMate 主页"><img src="/images/logo.svg" alt="TeslaMate" width="104" height="13"></a>
           <nav class="tm-nav" aria-label="主导航">
             <div class="tm-nav-items">
               ${NAV.map(
                 (n) =>
-                  html`<a href="${n.href}"${n.cls ? html` class="${n.cls}"` : ""}${n.current ? html` aria-current="page"` : ""}>${icon(n.icon)}<span>${n.label}</span></a>`
+                  html`<a href="${n.href}"${n.current ? html` aria-current="page"` : ""}>${icon(n.icon)}<span>${n.label}</span></a>`
               )}
             </div>
           </nav>
