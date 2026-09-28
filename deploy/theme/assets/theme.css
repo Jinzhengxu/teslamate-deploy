@@ -18,28 +18,28 @@
   --tm-font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI",
     "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", Roboto, sans-serif;
 
-  --tm-r-xl: 22px;
-  --tm-r-lg: 18px;
-  --tm-r-md: 14px;
-  --tm-r-sm: 10px;
+  --tm-r-xl: 16px;
+  --tm-r-lg: 12px;
+  --tm-r-md: 10px;
+  --tm-r-sm: 8px;
 
   --tm-tabbar-h: 58px;
   --tm-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 
   /* 亮色（默认） */
-  --tm-bg: #f2f3f5;
-  --tm-surface: #ffffff;
-  --tm-surface-2: #f4f5f7;
-  --tm-surface-3: #e9ebef;
-  --tm-line: rgba(17, 24, 39, 0.08);
-  --tm-line-strong: rgba(17, 24, 39, 0.14);
-  --tm-text: #111318;
-  --tm-text-2: #5c6270;
-  --tm-text-3: #8e939d; /* 只用于装饰（分隔符、描边），不用于要读的字 */
-  --tm-text-hint: #676d7a; /* 次要但要能读的字：占位符、说明、未选中的标签 */
-  --tm-accent: #3059c9;
-  --tm-accent-hover: #2a4fb5;
-  --tm-accent-soft: rgba(48, 89, 201, 0.11);
+  --tm-bg: #ffffff;
+  --tm-surface: #f4f4f4;
+  --tm-surface-2: #ececec;
+  --tm-surface-3: #e3e3e3;
+  --tm-line: rgba(23, 26, 32, 0.08);
+  --tm-line-strong: rgba(23, 26, 32, 0.15);
+  --tm-text: #171a20;
+  --tm-text-2: #4f5257;
+  --tm-text-3: #8e8e8e; /* 只用于装饰（分隔符、描边），不用于要读的字 */
+  --tm-text-hint: #5c5e62; /* 次要但要能读的字：占位符、说明、未选中的标签 */
+  --tm-accent: #3560d4;
+  --tm-accent-hover: #2d54bd;
+  --tm-accent-soft: rgba(62, 106, 225, 0.12);
   --tm-green: #17a34a;
   --tm-green-soft: rgba(23, 163, 74, 0.14);
   --tm-green-text: #15803d;
@@ -50,21 +50,25 @@
   --tm-red-soft: rgba(185, 28, 28, 0.09);
   /* 实心按钮的底色和字色：白字对比度都 ≥ 4.5:1 */
   --tm-on-fill: #fff;
-  --tm-accent-fill: #3059c9;
-  --tm-accent-fill-hover: #2a4fb5;
+  --tm-accent-fill: #3e6ae1;
+  --tm-accent-fill-hover: #3560d4;
   --tm-green-fill: #15803d;
   --tm-amber-fill: #b45309;
   --tm-red-fill: #b91c1c;
-  --tm-switch-off: #e3e5e9;
-  --tm-track: rgba(17, 24, 39, 0.08);
-  --tm-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 6px 20px rgba(16, 24, 40, 0.06);
-  --tm-shadow-pop: 0 12px 40px rgba(16, 24, 40, 0.16), 0 2px 6px rgba(16, 24, 40, 0.06);
-  --tm-glass: rgba(242, 243, 245, 0.82);
-  --tm-glass-strong: rgba(255, 255, 255, 0.9);
-  --tm-tooltip-bg: #1d2027;
+  --tm-switch-off: #d6d6d6;
+  --tm-track: rgba(23, 26, 32, 0.08);
+  --tm-shadow: none;
+  --tm-shadow-pop: 0 12px 40px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.05);
+  --tm-glass: rgba(255, 255, 255, 0.84);
+  --tm-glass-strong: rgba(255, 255, 255, 0.92);
+  --tm-tooltip-bg: #171a20;
   --tm-tooltip-fg: #f5f6f8;
   /* 浏览器地址栏 / 状态栏的颜色，theme.js 读它写进 <meta name="theme-color"> */
-  --tm-chrome: #f2f3f5;
+  --tm-chrome: #ffffff;
+  /* 压在灰色块上、要比它亮一档的东西（分段控件选中的那格）：卡片本身已经是灰底，不能用 surface */
+  --tm-raised: #ffffff;
+  /* 浅蓝底上的蓝字（浅色按钮、页脚按钮）：压在灰色卡片上要再深一档才过 4.5:1 */
+  --tm-accent-pill: #2d54bd;
 
   --bulma-family-primary: var(--tm-font);
   --bulma-family-sans-serif: var(--tm-font);
@@ -78,16 +82,16 @@
 }
 
 html[data-theme="dark"] {
-  --tm-bg: #0b0c0e;
-  --tm-surface: #16181c;
-  --tm-surface-2: #1e2126;
-  --tm-surface-3: #272b31;
-  --tm-line: rgba(255, 255, 255, 0.07);
-  --tm-line-strong: rgba(255, 255, 255, 0.13);
-  --tm-text: #f2f3f5;
-  --tm-text-2: #a2a8b4;
-  --tm-text-3: #6d7380;
-  --tm-text-hint: #8b919d;
+  --tm-bg: #000000;
+  --tm-surface: #151618;
+  --tm-surface-2: #1e1f22;
+  --tm-surface-3: #28292d;
+  --tm-line: rgba(255, 255, 255, 0.08);
+  --tm-line-strong: rgba(255, 255, 255, 0.14);
+  --tm-text: #f5f5f5;
+  --tm-text-2: #a8abb0;
+  --tm-text-3: #6b6e73;
+  --tm-text-hint: #8f9297;
   --tm-accent: #6f8fff;
   --tm-accent-hover: #86a1ff;
   --tm-accent-soft: rgba(111, 143, 255, 0.16);
@@ -100,20 +104,22 @@ html[data-theme="dark"] {
   --tm-red: #ff6b6b;
   --tm-red-soft: rgba(255, 107, 107, 0.14);
   /* 暗色下文字用的亮色系配白字对比度不够，实心按钮单独用深一档的底色 */
-  --tm-accent-fill: #3d5fd9;
-  --tm-accent-fill-hover: #3656cc;
+  --tm-accent-fill: #3e6ae1;
+  --tm-accent-fill-hover: #3560d4;
   --tm-green-fill: #15803d;
   --tm-amber-fill: #b45309;
   --tm-red-fill: #c53030;
-  --tm-switch-off: #3a3e46;
+  --tm-switch-off: #3a3b40;
   --tm-track: rgba(255, 255, 255, 0.09);
-  --tm-shadow: 0 0 0 1px rgba(255, 255, 255, 0.02);
+  --tm-shadow: none;
   --tm-shadow-pop: 0 16px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
-  --tm-glass: rgba(11, 12, 14, 0.78);
-  --tm-glass-strong: rgba(30, 33, 38, 0.92);
-  --tm-tooltip-bg: #2b2f36;
+  --tm-glass: rgba(0, 0, 0, 0.8);
+  --tm-glass-strong: rgba(30, 31, 34, 0.92);
+  --tm-tooltip-bg: #2a2b2f;
   --tm-tooltip-fg: #f2f3f5;
-  --tm-chrome: #0b0c0e;
+  --tm-chrome: #000000;
+  --tm-raised: #3a3c40;
+  --tm-accent-pill: var(--tm-accent);
 
   --bulma-body-background-color: var(--tm-bg);
   --bulma-text: var(--tm-text-2);
@@ -300,8 +306,8 @@ html .navbar .navbar-item .icon .mdi {
   }
 
   html .navbar.is-dark .navbar-end > a.navbar-item.tm-active {
-    background: var(--tm-accent-soft);
-    color: var(--tm-accent);
+    background: var(--tm-surface-3);
+    color: var(--tm-text);
   }
 }
 
@@ -408,13 +414,13 @@ html .navbar .navbar-item .icon .mdi {
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 500;
     letter-spacing: 0.01em;
     line-height: 1.2;
   }
 
   html .navbar.is-dark .navbar-end > a.navbar-item.tm-active {
-    color: var(--tm-accent-hover);
+    color: var(--tm-text);
   }
 
   html .navbar.is-dark .navbar-end > a.navbar-item:active .icon {
@@ -473,7 +479,7 @@ footer.footer .button.is-text {
   padding: 0 14px;
   border-radius: 999px;
   background: var(--tm-accent-soft);
-  color: var(--tm-accent) !important;
+  color: var(--tm-accent-pill) !important;
   font-size: 13px;
   text-decoration: none;
 }
@@ -484,7 +490,7 @@ footer.footer .button.is-text {
 .card {
   background: var(--tm-surface);
   color: var(--tm-text-2);
-  border: 1px solid var(--tm-line) !important;
+  border: 1px solid transparent !important;
   border-radius: var(--tm-r-lg);
   box-shadow: var(--tm-shadow);
 }
@@ -498,10 +504,10 @@ footer.footer .button.is-text {
   height: 40px;
   padding: 0 16px;
   border: 1px solid transparent;
-  border-radius: 12px;
+  border-radius: var(--tm-r-sm);
   background: var(--tm-surface-2);
   color: var(--tm-text);
-  font-weight: 600;
+  font-weight: 500;
   font-size: 15px;
   box-shadow: none;
   transition: background-color 0.15s, color 0.15s, border-color 0.15s, transform 0.1s, filter 0.15s;
@@ -520,7 +526,7 @@ footer.footer .button.is-text {
 .button.is-small {
   height: 34px;
   padding: 0 12px;
-  border-radius: 10px;
+  border-radius: var(--tm-r-sm);
   font-size: 13.5px;
 }
 
@@ -576,7 +582,7 @@ footer.footer .button.is-text {
 .button.is-info.is-light,
 .button.is-link.is-light {
   background: var(--tm-accent-soft);
-  color: var(--tm-accent);
+  color: var(--tm-accent-pill);
 }
 
 .button[disabled],
@@ -606,7 +612,7 @@ fieldset[disabled] .button {
 /* 表单控件 */
 .label {
   color: var(--tm-text);
-  font-weight: 600;
+  font-weight: 500;
   font-size: 14.5px;
 }
 
@@ -615,8 +621,8 @@ fieldset[disabled] .button {
 .select select {
   height: 42px;
   border: 1px solid var(--tm-line-strong);
-  border-radius: 12px;
-  background-color: var(--tm-surface);
+  border-radius: var(--tm-r-md);
+  background-color: var(--tm-bg);
   color: var(--tm-text);
   /* 不能小于 16px：iOS Safari 遇到更小的输入框，一点就自动放大页面 */
   font-size: 16px;
@@ -629,7 +635,7 @@ fieldset[disabled] .button {
 }
 
 .input.is-rounded {
-  border-radius: 12px;
+  border-radius: var(--tm-r-md);
   padding-left: 1em;
 }
 
@@ -767,7 +773,7 @@ input[type="radio"] {
   outline: none;
 }
 
-/* 关着的开关在白卡片上几乎看不见，加一圈描边 */
+/* 关着的开关和浅灰卡片几乎一个颜色，加一圈描边 */
 .switch[type="checkbox"]:not(:checked) + label::before {
   box-shadow: inset 0 0 0 1.5px var(--tm-text-3);
 }
@@ -826,7 +832,7 @@ input[type="radio"] {
   border-radius: var(--tm-r-md);
   background: var(--tm-surface);
   color: var(--tm-text);
-  border: 1px solid var(--tm-line);
+  border: 1px solid transparent;
   box-shadow: var(--tm-shadow);
 }
 
@@ -908,16 +914,16 @@ input[type="radio"] {
   padding: 3px;
   gap: 2px;
   border: 0;
-  border-radius: 12px;
+  border-radius: var(--tm-r-md);
   background: var(--tm-surface-3);
 }
 
 .tabs.is-boxed li a {
   padding: 6px 16px;
   border: 0 !important;
-  border-radius: 9px !important;
+  border-radius: 7px !important;
   color: var(--tm-text-2);
-  font-weight: 600;
+  font-weight: 500;
   font-size: 14px;
 }
 
@@ -927,7 +933,7 @@ input[type="radio"] {
 }
 
 .tabs.is-boxed li.is-active a {
-  background: var(--tm-surface) !important;
+  background: var(--tm-raised) !important;
   color: var(--tm-text) !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
@@ -976,7 +982,7 @@ input[type="radio"] {
 
 .modal-card-title {
   color: var(--tm-text);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 18px;
 }
 
@@ -1051,16 +1057,16 @@ input[type="radio"] {
   white-space: nowrap;
   color: var(--tm-text) !important;
   font-family: var(--tm-font-display);
-  font-size: 30px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
   line-height: 1.2;
   pointer-events: none;
 }
 
 @media screen and (max-width: 768px) {
   .breadcrumb li.is-active a {
-    font-size: 28px;
+    font-size: 26px;
   }
 }
 
@@ -1071,12 +1077,12 @@ html.tm-untitled .breadcrumb li.is-active a {
 
 html.tm-untitled .breadcrumb li.is-active a::after {
   content: var(--tm-untitled-label, "New");
-  font-size: 30px;
+  font-size: 28px;
 }
 
 @media screen and (max-width: 768px) {
   html.tm-untitled .breadcrumb li.is-active a::after {
-    font-size: 28px;
+    font-size: 26px;
   }
 }
 
@@ -1163,8 +1169,8 @@ html.tm-untitled .breadcrumb li.is-active a::after {
   margin-bottom: 4px;
   color: var(--tm-text);
   font-size: 26px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-weight: 500;
+  letter-spacing: -0.01em;
   line-height: 1.15;
 }
 
@@ -1300,7 +1306,7 @@ html.tm-untitled .breadcrumb li.is-active a::after {
   color: var(--tm-text);
   font-family: var(--tm-font-display);
   font-size: 17px;
-  font-weight: 650;
+  font-weight: 400;
   line-height: 1.25;
   letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
@@ -1382,7 +1388,7 @@ html.tm-untitled .breadcrumb li.is-active a::after {
   color: var(--tm-text);
   font-family: var(--tm-font);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .car .content table.table tbody > tr:first-child > td:last-child::before {
@@ -1444,9 +1450,9 @@ html.tm-untitled .breadcrumb li.is-active a::after {
 }
 
 .car .content table.table tbody > tr:has(> td > .has-tooltip-right-desktop) > td:last-child {
-  font-size: 38px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
+  font-size: 44px;
+  font-weight: 300;
+  letter-spacing: -0.02em;
   line-height: 1.1;
 }
 
@@ -1839,7 +1845,7 @@ html[data-theme="dark"] .leaflet-control-geocoder-icon {
   position: absolute;
   inset: var(--tm-sec-h) 0 0;
   z-index: -1;
-  border: 1px solid var(--tm-line);
+  border: 1px solid transparent;
   border-radius: var(--tm-r-lg);
   background: var(--tm-surface);
   box-shadow: var(--tm-shadow);
@@ -1943,9 +1949,10 @@ html[data-theme="dark"] .leaflet-control-geocoder-icon {
   max-width: none;
 }
 
+/* 卡片是灰底，输入框用页面底色（亮色白、暗色黑），像嵌在卡片里的一格 */
 [data-phx-main]:has(> #global_settings) .select select,
 [data-phx-main]:has(> #global_settings) .input {
-  background-color: var(--tm-surface-2);
+  background-color: var(--tm-bg);
   border-color: transparent;
 }
 
@@ -1957,7 +1964,7 @@ html[data-theme="dark"] .leaflet-control-geocoder-icon {
 [data-phx-main]:has(> #global_settings) .select select:focus,
 [data-phx-main]:has(> #global_settings) .input:focus {
   border-color: var(--tm-accent);
-  background-color: var(--tm-surface);
+  background-color: var(--tm-bg);
 }
 
 /* 「里程标定方式」旁边 ⓘ 的解释只在鼠标悬停时出现；手机没有悬停，直接显示在名字下面 */
@@ -2085,7 +2092,7 @@ button[phx-click="sign_out"] {
 .breadcrumb ~ table.table {
   display: block;
   overflow: hidden;
-  border: 1px solid var(--tm-line);
+  border: 1px solid transparent;
   border-radius: var(--tm-r-lg);
   background: var(--tm-surface);
   box-shadow: var(--tm-shadow);
@@ -2124,7 +2131,7 @@ button[phx-click="sign_out"] {
   max-width: none !important;
   color: var(--tm-text);
   font-size: 16px;
-  font-weight: 600 !important;
+  font-weight: 500 !important;
   line-height: 36px;
 }
 
@@ -2135,10 +2142,8 @@ button[phx-click="sign_out"] {
   justify-content: center;
   width: 36px;
   height: 36px;
-  border-radius: 12px;
-  background: var(--tm-accent-soft);
-  color: var(--tm-accent);
-  font: normal normal normal 20px/1 "Material Design Icons";
+  color: var(--tm-text-2);
+  font: normal normal normal 24px/1 "Material Design Icons";
   vertical-align: top;
   margin-right: 12px;
 }
@@ -2244,7 +2249,7 @@ form.charging_process {
   max-width: 760px;
   margin: 0 auto;
   padding: 18px;
-  border: 1px solid var(--tm-line);
+  border: 1px solid transparent;
   border-radius: var(--tm-r-xl);
   background: var(--tm-surface);
   box-shadow: var(--tm-shadow);
@@ -2354,12 +2359,12 @@ form.charging_process .tags.has-addons .tag:first-child:not(:last-child) {
   border-radius: 14px 0 0 14px;
 }
 
-/* 输入框和设置页一样用浅灰填充 */
+/* 输入框和设置页一样用页面底色填充 */
 form#geo_fence .select select,
 form.charging_process .select select,
 form#geo_fence .input,
 form.charging_process .input {
-  background-color: var(--tm-surface-2);
+  background-color: var(--tm-bg);
   border-color: transparent;
 }
 
@@ -2375,7 +2380,7 @@ form.charging_process .select select:focus,
 form#geo_fence .input:focus,
 form.charging_process .input:focus {
   border-color: var(--tm-accent);
-  background-color: var(--tm-surface);
+  background-color: var(--tm-bg);
 }
 
 /* 「每度电 + 金额」这一组：窄屏上也不换行（原版给 .field.is-horizontal .field 开了 flex-wrap） */
@@ -2495,10 +2500,8 @@ form#tokens.box::before {
   width: 56px;
   height: 56px;
   margin: 0 auto 20px;
-  border-radius: 18px;
-  background: var(--tm-accent-soft);
-  color: var(--tm-accent);
-  font: normal normal normal 30px/1 "Material Design Icons";
+  color: var(--tm-text);
+  font: normal normal normal 40px/1 "Material Design Icons";
 }
 
 form#tokens .input {

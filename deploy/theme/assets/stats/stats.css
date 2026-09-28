@@ -20,27 +20,27 @@
     "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", Roboto, sans-serif;
   --tm-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 
-  --tm-r-xl: 22px;
-  --tm-r-lg: 18px;
-  --tm-r-md: 14px;
-  --tm-r-sm: 10px;
+  --tm-r-xl: 16px;
+  --tm-r-lg: 12px;
+  --tm-r-md: 10px;
+  --tm-r-sm: 8px;
 
   --tm-tabbar-h: 58px;
   --tm-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 
-  --tm-bg: #f2f3f5;
-  --tm-surface: #ffffff;
-  --tm-surface-2: #f4f5f7;
-  --tm-surface-3: #e9ebef;
-  --tm-line: rgba(17, 24, 39, 0.08);
-  --tm-line-strong: rgba(17, 24, 39, 0.14);
-  --tm-text: #111318;
-  --tm-text-2: #5c6270;
-  --tm-text-3: #8e939d; /* 只用于装饰（分隔符、描边），不用于要读的字 */
-  --tm-text-hint: #676d7a; /* 次要但要能读的字 */
-  --tm-accent: #3059c9;
-  --tm-accent-hover: #2a4fb5;
-  --tm-accent-soft: rgba(48, 89, 201, 0.11);
+  --tm-bg: #ffffff;
+  --tm-surface: #f4f4f4;
+  --tm-surface-2: #ececec;
+  --tm-surface-3: #e3e3e3;
+  --tm-line: rgba(23, 26, 32, 0.08);
+  --tm-line-strong: rgba(23, 26, 32, 0.15);
+  --tm-text: #171a20;
+  --tm-text-2: #4f5257;
+  --tm-text-3: #8e8e8e; /* 只用于装饰（分隔符、描边），不用于要读的字 */
+  --tm-text-hint: #5c5e62; /* 次要但要能读的字 */
+  --tm-accent: #3560d4;
+  --tm-accent-hover: #2d54bd;
+  --tm-accent-soft: rgba(62, 106, 225, 0.12);
   --tm-green: #17a34a;
   --tm-green-soft: rgba(23, 163, 74, 0.14);
   --tm-green-text: #15803d;
@@ -50,27 +50,27 @@
   --tm-red: #b91c1c;
   --tm-red-soft: rgba(185, 28, 28, 0.09);
   --tm-on-fill: #fff;
-  --tm-accent-fill: #3059c9;
-  --tm-accent-fill-hover: #2a4fb5;
+  --tm-accent-fill: #3e6ae1;
+  --tm-accent-fill-hover: #3560d4;
   --tm-green-fill: #15803d;
   --tm-amber-fill: #b45309;
   --tm-red-fill: #b91c1c;
-  --tm-track: rgba(17, 24, 39, 0.08);
-  --tm-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 6px 20px rgba(16, 24, 40, 0.06);
-  --tm-shadow-pop: 0 12px 40px rgba(16, 24, 40, 0.16), 0 2px 6px rgba(16, 24, 40, 0.06);
-  --tm-glass: rgba(242, 243, 245, 0.82);
-  --tm-glass-strong: rgba(255, 255, 255, 0.9);
-  --tm-tooltip-bg: #1d2027;
+  --tm-track: rgba(23, 26, 32, 0.08);
+  --tm-shadow: none;
+  --tm-shadow-pop: 0 12px 40px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.05);
+  --tm-glass: rgba(255, 255, 255, 0.84);
+  --tm-glass-strong: rgba(255, 255, 255, 0.92);
+  --tm-tooltip-bg: #171a20;
   --tm-tooltip-fg: #f5f6f8;
-  --tm-chrome: #f2f3f5;
+  --tm-chrome: #ffffff;
 
   /* 以下是统计页自己的变量（theme.css 里没有） */
   /* 图表分类色：顺序固定（蓝、橙、紫、绿、青、红），相邻两色在色盲模拟下也能区分；
-     亮 / 暗各一套，都用 dataviz 的校验脚本验过（亮色对 #fff、暗色对 #16181c） */
-  --tm-c1: #3059c9;
-  --tm-c2: #d97706;
+     亮 / 暗各一套，都用 dataviz 的校验脚本验过（亮色对 #fff、暗色对 #16181c；卡片底色改成 #f4f4f4 / #151618 后另核过） */
+  --tm-c1: #3560d4;
+  --tm-c2: #cf6f05;
   --tm-c3: #8b5cf6;
-  --tm-c4: #17a34a;
+  --tm-c4: #159a45;
   --tm-c5: #0891b2;
   --tm-c6: #dc2626;
   --tm-violet: #7c3aed;
@@ -81,8 +81,14 @@
      暗色下 -text 本来就在 5:1 以上，照用 */
   --tm-green-pill: #166534;
   --tm-amber-pill: #92400e;
-  --tm-skeleton: rgba(17, 24, 39, 0.06);
-  --tm-skeleton-hi: rgba(17, 24, 39, 0.02);
+  /* 蓝、紫、青的浅底标签（还有浅蓝底的按钮）压在灰色卡片上，字色也要再深一档才过 4.5:1 */
+  --tm-accent-pill: #2d54bd;
+  --tm-violet-pill: #6d28d9;
+  --tm-cyan-pill: #0e6a83;
+  /* 压在灰色块上、要比它亮一档的东西（分段选择选中的那格）：卡片本身已经是灰底，不能用 surface */
+  --tm-raised: #ffffff;
+  --tm-skeleton: rgba(23, 26, 32, 0.07);
+  --tm-skeleton-hi: rgba(23, 26, 32, 0.025);
   /* 页面左右留白：和 TeslaMate 的 main.section 一致 */
   --tm-gutter: 24px;
   /* 和 TeslaMate 的 Bulma .container 同宽：在 TeslaMate 页面和统计页之间切换时，顶栏的导航不会左右跳 */
@@ -91,16 +97,16 @@
 }
 
 html[data-theme="dark"] {
-  --tm-bg: #0b0c0e;
-  --tm-surface: #16181c;
-  --tm-surface-2: #1e2126;
-  --tm-surface-3: #272b31;
-  --tm-line: rgba(255, 255, 255, 0.07);
-  --tm-line-strong: rgba(255, 255, 255, 0.13);
-  --tm-text: #f2f3f5;
-  --tm-text-2: #a2a8b4;
-  --tm-text-3: #6d7380;
-  --tm-text-hint: #8b919d;
+  --tm-bg: #000000;
+  --tm-surface: #151618;
+  --tm-surface-2: #1e1f22;
+  --tm-surface-3: #28292d;
+  --tm-line: rgba(255, 255, 255, 0.08);
+  --tm-line-strong: rgba(255, 255, 255, 0.14);
+  --tm-text: #f5f5f5;
+  --tm-text-2: #a8abb0;
+  --tm-text-3: #6b6e73;
+  --tm-text-hint: #8f9297;
   --tm-accent: #6f8fff;
   --tm-accent-hover: #86a1ff;
   --tm-accent-soft: rgba(111, 143, 255, 0.16);
@@ -112,19 +118,19 @@ html[data-theme="dark"] {
   --tm-amber-soft: rgba(251, 191, 36, 0.15);
   --tm-red: #ff6b6b;
   --tm-red-soft: rgba(255, 107, 107, 0.14);
-  --tm-accent-fill: #3d5fd9;
-  --tm-accent-fill-hover: #3656cc;
+  --tm-accent-fill: #3e6ae1;
+  --tm-accent-fill-hover: #3560d4;
   --tm-green-fill: #15803d;
   --tm-amber-fill: #b45309;
   --tm-red-fill: #c53030;
   --tm-track: rgba(255, 255, 255, 0.09);
-  --tm-shadow: 0 0 0 1px rgba(255, 255, 255, 0.02);
+  --tm-shadow: none;
   --tm-shadow-pop: 0 16px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
-  --tm-glass: rgba(11, 12, 14, 0.78);
-  --tm-glass-strong: rgba(30, 33, 38, 0.92);
-  --tm-tooltip-bg: #2b2f36;
+  --tm-glass: rgba(0, 0, 0, 0.8);
+  --tm-glass-strong: rgba(30, 31, 34, 0.92);
+  --tm-tooltip-bg: #2a2b2f;
   --tm-tooltip-fg: #f2f3f5;
-  --tm-chrome: #0b0c0e;
+  --tm-chrome: #000000;
 
   --tm-c1: #6585ff;
   --tm-c2: #c4820e;
@@ -138,6 +144,10 @@ html[data-theme="dark"] {
   --tm-cyan-soft: rgba(34, 211, 238, 0.14);
   --tm-green-pill: var(--tm-green-text);
   --tm-amber-pill: var(--tm-amber-text);
+  --tm-accent-pill: var(--tm-accent);
+  --tm-violet-pill: var(--tm-violet);
+  --tm-cyan-pill: var(--tm-cyan);
+  --tm-raised: #3a3c40;
   --tm-skeleton: rgba(255, 255, 255, 0.06);
   --tm-skeleton-hi: rgba(255, 255, 255, 0.02);
   color-scheme: dark;
@@ -325,8 +335,8 @@ strong {
 }
 
 .tm-nav a[aria-current="page"] {
-  background: var(--tm-accent-soft);
-  color: var(--tm-accent);
+  background: var(--tm-surface-3);
+  color: var(--tm-text);
 }
 
 /* TeslaMate 的导航（Bulma）右边伸出容器 12px，这里跟着伸出，两边切换时按钮位置不动 */
@@ -401,7 +411,7 @@ strong {
     background: transparent !important;
     color: var(--tm-text-hint);
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 500;
     letter-spacing: 0.01em;
     line-height: 1.2;
     transition: color 0.15s;
@@ -426,7 +436,7 @@ strong {
   }
 
   .tm-nav a[aria-current="page"] {
-    color: var(--tm-accent-hover);
+    color: var(--tm-text);
   }
 
   .tm-nav a:active .tm-svg {
@@ -532,9 +542,9 @@ strong {
   overflow: hidden;
   color: var(--tm-text);
   font-family: var(--tm-font-display);
-  font-size: 30px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -579,7 +589,7 @@ strong {
 
 @media screen and (max-width: 768px) {
   .tm-title {
-    font-size: 28px;
+    font-size: 26px;
   }
 }
 
@@ -591,7 +601,7 @@ strong {
   width: 38px;
   height: 38px;
   padding: 0;
-  border: 1px solid var(--tm-line);
+  border: 0;
   border-radius: 999px;
   background: var(--tm-surface);
   color: var(--tm-text);
@@ -622,8 +632,8 @@ strong {
   max-width: 100%;
   height: 38px;
   margin-top: 14px;
-  border: 1px solid var(--tm-line);
-  border-radius: 12px;
+  border: 1px solid transparent;
+  border-radius: var(--tm-r-md);
   background: var(--tm-surface);
   box-shadow: var(--tm-shadow);
 }
@@ -656,11 +666,11 @@ strong {
 }
 
 .tm-rb-step:first-child {
-  border-radius: 11px 0 0 11px !important;
+  border-radius: 9px 0 0 9px !important;
 }
 
 .tm-rb-step:last-child {
-  border-radius: 0 11px 11px 0 !important;
+  border-radius: 0 9px 9px 0 !important;
 }
 
 .tm-rb-step .tm-svg {
@@ -675,7 +685,7 @@ strong {
   padding: 0 12px !important;
   border-inline: 1px solid var(--tm-line) !important;
   font-size: 14.5px;
-  font-weight: 600;
+  font-weight: 500;
   white-space: nowrap;
 }
 
@@ -772,8 +782,8 @@ strong {
 
 .tm-chip[aria-pressed="true"] {
   border-color: transparent;
-  background: var(--tm-accent-soft);
-  color: var(--tm-accent);
+  background: var(--tm-text);
+  color: var(--tm-bg);
   font-weight: 600;
 }
 
@@ -880,7 +890,7 @@ strong {
     padding: 8px 4px 10px;
     color: var(--tm-text);
     font-size: 16px;
-    font-weight: 700;
+    font-weight: 600;
     text-align: center;
   }
 
@@ -980,11 +990,11 @@ strong {
   height: 40px;
   padding: 0 16px;
   border: 1px solid transparent;
-  border-radius: 12px;
+  border-radius: var(--tm-r-sm);
   background: var(--tm-surface-2);
   color: var(--tm-text);
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
   transition: background-color 0.15s, color 0.15s, transform 0.1s;
@@ -1020,7 +1030,7 @@ strong {
 
 .tm-btn.is-soft {
   background: var(--tm-accent-soft);
-  color: var(--tm-accent);
+  color: var(--tm-accent-pill);
 }
 
 .tm-btn.is-text {
@@ -1035,7 +1045,7 @@ strong {
 .tm-btn.is-small {
   height: 32px;
   padding: 0 12px;
-  border-radius: 10px;
+  border-radius: var(--tm-r-sm);
   font-size: 13.5px;
 }
 
@@ -1114,7 +1124,7 @@ strong {
   overflow: hidden;
   color: var(--tm-text);
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: -0.01em;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1137,7 +1147,7 @@ strong {
 .tm-card {
   display: block;
   min-width: 0;
-  border: 1px solid var(--tm-line);
+  border: 1px solid transparent;
   border-radius: var(--tm-r-lg);
   background: var(--tm-surface);
   box-shadow: var(--tm-shadow);
@@ -1170,7 +1180,7 @@ a.tm-card:active {
   margin-bottom: 10px;
   color: var(--tm-text);
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 /* ------------------------------------------------------------------ 统计数字宫格 */
@@ -1212,7 +1222,7 @@ a.tm-card:active {
   gap: 2px;
   min-width: 0;
   padding: 13px 14px 14px;
-  border: 1px solid var(--tm-line);
+  border: 1px solid transparent;
   border-radius: var(--tm-r-md);
   background: var(--tm-surface);
   box-shadow: var(--tm-shadow);
@@ -1248,7 +1258,7 @@ a.tm-stat:hover {
   color: var(--tm-text);
   font-family: var(--tm-font-display);
   font-size: 24px;
-  font-weight: 650;
+  font-weight: 400;
   letter-spacing: -0.02em;
   line-height: 1.25;
   white-space: nowrap;
@@ -1385,14 +1395,12 @@ a.tm-row:active {
   justify-content: center;
   width: 36px;
   height: 36px;
-  border-radius: 11px;
-  background: var(--tm-accent-soft);
-  color: var(--tm-accent);
+  color: var(--tm-text-2);
 }
 
 .tm-row-icon .tm-svg {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
 }
 
 .tm-row-main {
@@ -1410,7 +1418,7 @@ a.tm-row:active {
   line-clamp: 2;
   color: var(--tm-text);
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.35;
   white-space: normal;
   overflow-wrap: anywhere;
@@ -1450,7 +1458,7 @@ a.tm-row:active {
   overflow: hidden;
   color: var(--tm-text);
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1616,12 +1624,11 @@ a.tm-row:active {
   .tm-row-icon {
     width: 28px;
     height: 28px;
-    border-radius: 9px;
   }
 
   .tm-row-icon .tm-svg {
-    width: 17px;
-    height: 17px;
+    width: 21px;
+    height: 21px;
   }
 
   .tm-row.has-icon {
@@ -1633,41 +1640,29 @@ a.tm-row:active {
   }
 }
 
-/* 图标底色的语气 */
-.tm-row-icon.is-green,
-.tm-entry-icon.is-green {
-  background: var(--tm-green-soft);
+/* 图标的语气：只给线条图标上色，不画底 */
+.tm-row-icon.is-green {
   color: var(--tm-green-text);
 }
 
-.tm-row-icon.is-amber,
-.tm-entry-icon.is-amber {
-  background: var(--tm-amber-soft);
+.tm-row-icon.is-amber {
   color: var(--tm-amber-text);
 }
 
-.tm-row-icon.is-red,
-.tm-entry-icon.is-red {
-  background: var(--tm-red-soft);
+.tm-row-icon.is-red {
   color: var(--tm-red);
 }
 
-.tm-row-icon.is-violet,
-.tm-entry-icon.is-violet {
-  background: var(--tm-violet-soft);
+.tm-row-icon.is-violet {
   color: var(--tm-violet);
 }
 
-.tm-row-icon.is-cyan,
-.tm-entry-icon.is-cyan {
-  background: var(--tm-cyan-soft);
+.tm-row-icon.is-cyan {
   color: var(--tm-cyan);
 }
 
-.tm-row-icon.is-muted,
-.tm-entry-icon.is-muted {
-  background: var(--tm-surface-2);
-  color: var(--tm-text-2);
+.tm-row-icon.is-muted {
+  color: var(--tm-text-hint);
 }
 
 .tm-list-more {
@@ -1879,7 +1874,7 @@ a.tm-row:active {
   padding: 3px;
   gap: 2px;
   overflow-x: auto;
-  border-radius: 12px;
+  border-radius: var(--tm-r-md);
   background: var(--tm-surface-3);
   scrollbar-width: none;
 }
@@ -1893,11 +1888,11 @@ a.tm-row:active {
   min-height: 32px;
   padding: 0 14px;
   border: 0;
-  border-radius: 9px;
+  border-radius: 7px;
   background: transparent;
   color: var(--tm-text-2);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
   transition: background-color 0.15s, color 0.15s;
@@ -1908,7 +1903,7 @@ a.tm-row:active {
 }
 
 .tm-seg button[aria-checked="true"] {
-  background: var(--tm-surface);
+  background: var(--tm-raised);
   color: var(--tm-text);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
@@ -1990,7 +1985,7 @@ a.tm-row:active {
 
 .tm-pill.is-accent {
   background: var(--tm-accent-soft);
-  color: var(--tm-accent);
+  color: var(--tm-accent-pill);
 }
 
 .tm-pill.is-green {
@@ -2010,12 +2005,12 @@ a.tm-row:active {
 
 .tm-pill.is-violet {
   background: var(--tm-violet-soft);
-  color: var(--tm-violet);
+  color: var(--tm-violet-pill);
 }
 
 .tm-pill.is-cyan {
   background: var(--tm-cyan-soft);
-  color: var(--tm-cyan);
+  color: var(--tm-cyan-pill);
 }
 
 /* 次要的标签（「估算值」这类）：不填底色，只描一圈细边，比默认的灰底标签更不抢眼 */
@@ -2140,7 +2135,7 @@ a.tm-row:active {
 .tm-empty-title {
   color: var(--tm-text);
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .tm-empty-text {
@@ -2455,7 +2450,7 @@ html[data-theme="dark"] .tm-map .leaflet-tile-pane {
   background: rgba(0, 0, 0, 0.36);
   color: #fff;
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 500;
   text-align: center;
   opacity: 0;
   pointer-events: none;
@@ -2576,7 +2571,7 @@ html[data-theme="dark"] .tm-map .leaflet-tile-pane {
   padding: 8px 16px;
   color: var(--tm-text);
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 500;
   list-style: none;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -2724,7 +2719,7 @@ html[data-theme="dark"] .tm-map .leaflet-tile-pane {
   gap: 3px;
   min-width: 0;
   padding: 12px 14px;
-  border: 1px solid var(--tm-line);
+  border: 1px solid transparent;
   border-radius: var(--tm-r-md);
   background: var(--tm-surface);
   box-shadow: var(--tm-shadow);
@@ -2776,7 +2771,7 @@ a.tm-neighbor:active {
   overflow: hidden;
   color: var(--tm-text);
   font-size: 14.5px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.35;
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
@@ -2840,7 +2835,7 @@ a.tm-neighbor:active {
 
 .tm-rank-no.is-top {
   background: var(--tm-accent-soft);
-  color: var(--tm-accent);
+  color: var(--tm-accent-pill);
 }
 
 .tm-rank-main {
@@ -2862,7 +2857,7 @@ a.tm-neighbor:active {
   min-width: 0;
   color: var(--tm-text);
   font-size: 14.5px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
@@ -2886,7 +2881,7 @@ a.tm-rank-name:hover {
   flex: none;
   color: var(--tm-text);
   font-size: 14.5px;
-  font-weight: 600;
+  font-weight: 500;
   white-space: nowrap;
 }
 
@@ -3090,7 +3085,7 @@ a.tm-rank-name:hover {
   overflow: hidden;
   color: var(--tm-text);
   font-size: 15px;
-  font-weight: 650;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3148,7 +3143,7 @@ a.tm-rank-name:hover {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   overflow: hidden;
-  border: 1px solid var(--tm-line);
+  border: 1px solid transparent;
   border-radius: var(--tm-r-lg);
   background: var(--tm-surface);
   box-shadow: var(--tm-shadow);
@@ -3187,14 +3182,12 @@ a.tm-rank-name:hover {
   justify-content: center;
   width: 36px;
   height: 36px;
-  border-radius: 11px;
-  background: var(--tm-accent-soft);
-  color: var(--tm-accent);
+  color: var(--tm-text);
 }
 
 .tm-entry-icon .tm-svg {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
 }
 
 .tm-entry-main {
@@ -3210,7 +3203,7 @@ a.tm-rank-name:hover {
 .tm-entry-title {
   color: var(--tm-text);
   font-size: 15.5px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .tm-entry-desc {
@@ -3243,7 +3236,7 @@ a.tm-rank-name:hover {
   }
 
   .tm-entry {
-    border: 1px solid var(--tm-line);
+    border: 1px solid transparent;
     border-radius: var(--tm-r-md);
     background: var(--tm-surface);
     box-shadow: var(--tm-shadow);

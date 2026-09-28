@@ -56,7 +56,7 @@
   color: var(--tm-text);
   font-family: var(--tm-font-display);
   font-size: 40px;
-  font-weight: 700;
+  font-weight: 300;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.03em;
   line-height: 1.1;
@@ -70,7 +70,7 @@
   margin-left: 2px;
   color: var(--tm-text-2);
   font-size: 0.45em;
-  font-weight: 600;
+  font-weight: 400;
   letter-spacing: 0;
 }
 

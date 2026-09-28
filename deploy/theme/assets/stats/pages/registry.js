@@ -13,10 +13,10 @@
  */
 
 export const GROUPS = [
-  { id: "trips", title: "行程与充电", tone: "accent" },
-  { id: "analysis", title: "统计分析", tone: "violet" },
-  { id: "vehicle", title: "车辆与电池", tone: "green" },
-  { id: "places", title: "地图与地点", tone: "amber" }
+  { id: "trips", title: "行程与充电" },
+  { id: "analysis", title: "统计分析" },
+  { id: "vehicle", title: "车辆与电池" },
+  { id: "places", title: "地图与地点" }
 ];
 
 export const ROUTES = [

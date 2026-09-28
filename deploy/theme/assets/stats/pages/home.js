@@ -3,7 +3,7 @@
 //
 // 数字的口径：
 //   概况：电量、续航、里程表、软件版本和 Overview 面板的 Battery Level / Range / Odometer / Firmware 一样取最近一条记录；
-//         正在充电 / 行驶时车名下面多一行状态（LIVE_SQL，和充电页、时间线同一个口径；中途断掉的不算）；
+//         正在充电 / 行驶时电量条下面多一行状态（LIVE_SQL，和充电页、时间线同一个口径；中途断掉的不算）；
 //   本月：里程、能耗（净）和 Overview 的 Total Distance logged / Ø Consumption (net) 同一算法，
 //         行程、充电和行程页、充电页的列表一样只算已经结束的（充电再去掉充进 0 kWh 的）；
 //   最近行程 / 充电：已经结束的，加上正在进行的那一次（中途断掉的不列，它们在行程页、充电页单独一节）；
@@ -327,10 +327,9 @@ function modelText(car) {
   return parts.join(" · ");
 }
 
-function fact(icon, label, value, { sub, href, extra } = {}) {
+function fact(icon, label, value, { sub, href } = {}) {
   const body = html`<span class="pg-home-fact-label">${ui.icon(icon)}${label}</span>
     <span class="pg-home-fact-value tm-num">${value}</span>
-    ${extra || ""}
     ${sub ? html`<span class="pg-home-fact-sub">${sub}</span>` : ""}`;
   return href ? html`<a class="pg-home-fact" href="${href}">${body}</a>` : html`<div class="pg-home-fact">${body}</div>`;
 }
@@ -361,29 +360,36 @@ function liveHtml(live, ctx) {
   </a>`;
 }
 
+// 像 Tesla App 的首页：车名下面是大号的电量和续航、一条电量条，再下面才是里程表、软件版本这些次要的数。
+// 电量条平时是黑 / 白（文字色），充电时绿，20% 以下橙、10% 以下红 —— 和换肤后 TeslaMate 主页的电量条一个规则
 function heroHtml(car, info, live, ctx) {
   const level = info.battery_level;
   // 冷车时可用电量比显示电量低（续航打折），和 TeslaMate 主页一样标出来
   const usableNote = level != null && info.usable_battery_level != null && info.usable_battery_level < level ? `可用 ${info.usable_battery_level}%` : null;
-  const levelTone = level == null ? null : level < 10 ? "red" : level < 20 ? "amber" : "green";
+  const barTone = level == null ? "" : level <= 10 ? "red" : level <= 20 ? "amber" : live?.kind === "charge" ? "green" : "";
   const model = modelText(car);
+  const rangeLabel = ctx.settings.preferredRange === "ideal" ? "理想续航" : "额定续航";
   return html`<div class="tm-card pg-home-hero">
     <div class="pg-home-car">
-      <span class="pg-home-car-icon">${ui.icon("car-electric-outline")}</span>
       <div class="pg-home-car-main">
         <div class="pg-home-car-name">${car.name || car.label || "我的车"}</div>
         ${model ? html`<div class="pg-home-car-model">${model}</div>` : ""}
       </div>
       ${info.date ? html`<span class="pg-home-updated" title="${fmt.dateTime(info.date)}">${fmt.rel(info.date)}更新</span>` : ""}
     </div>
+    <a class="pg-home-soc" href="${ctx.href("/stats/levels")}">
+      <span class="pg-home-soc-row">
+        <span class="pg-home-soc-level tm-num"><span class="tm-sr">电量</span>${level == null ? "—" : html`${fmt.num(level)}<small>%</small>`}</span>
+        <span class="pg-home-soc-range">
+          <span class="pg-home-soc-range-value tm-num">${info.range == null ? "—" : html`${fmt.num(info.range)}<small>${fmt.unit.len}</small>`}</span>
+          <span class="pg-home-soc-note">${rangeLabel}</span>
+        </span>
+      </span>
+      <span class="pg-home-soc-bar${barTone ? " is-" + barTone : ""}" role="presentation"><span style="width:${Math.max(0, Math.min(100, +level || 0))}%"></span></span>
+      ${usableNote ? html`<span class="pg-home-soc-note">${usableNote}</span>` : ""}
+    </a>
     ${liveHtml(live, ctx)}
     <div class="pg-home-facts">
-      ${fact("battery-50", "电量", fmt.pct(level), {
-        href: ctx.href("/stats/levels"),
-        extra: level != null ? ui.bar(level, 100, levelTone) : null,
-        sub: usableNote
-      })}
-      ${fact("gauge", "续航", fmt.len(info.range), { sub: ctx.settings.preferredRange === "ideal" ? "理想续航" : "额定续航" })}
       ${fact("counter", "里程表", fmt.len(info.odometer), { href: ctx.href("/stats/levels"), sub: "总里程" })}
       ${fact("update", "软件版本", info.version || "—", {
         href: ctx.href("/stats/updates"),
@@ -458,7 +464,7 @@ function entriesHtml(ctx) {
       g.title,
       html`<div class="tm-entries">${g.items.map(
         (r) => html`<a class="tm-entry" href="${ctx.href(r.path)}">
-          <span class="tm-entry-icon is-${g.tone}">${ui.icon(r.icon)}</span>
+          <span class="tm-entry-icon">${ui.icon(r.icon)}</span>
           <span class="tm-entry-main">
             <span class="tm-entry-title">${r.title}</span>
             ${r.desc ? html`<span class="tm-entry-desc">${r.desc}</span>` : ""}

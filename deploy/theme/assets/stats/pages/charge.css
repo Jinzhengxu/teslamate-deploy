@@ -35,30 +35,27 @@
   min-width: 0;
 }
 
+/* 快慢充的图标：和列表行一样只给线条图标上色，不画底 */
 .pg-charge-badge {
   display: inline-flex;
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 40px;
+  width: 32px;
   height: 40px;
-  border-radius: 12px;
-  background: var(--tm-accent-soft);
-  color: var(--tm-accent);
+  color: var(--tm-text-2);
 }
 
 .pg-charge-badge .tm-svg {
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
 }
 
 .pg-charge-badge.is-green {
-  background: var(--tm-green-soft);
   color: var(--tm-green-text);
 }
 
 .pg-charge-badge.is-amber {
-  background: var(--tm-amber-soft);
   color: var(--tm-amber-text);
 }
 
@@ -69,7 +66,7 @@
 .pg-charge-place {
   color: var(--tm-text);
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: -0.01em;
   line-height: 1.3;
   overflow-wrap: anywhere;

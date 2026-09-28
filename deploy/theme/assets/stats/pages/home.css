@@ -44,24 +44,7 @@
   align-items: center;
   gap: 12px;
   min-width: 0;
-  padding: 16px 16px 14px;
-}
-
-.pg-home-car-icon {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
-  background: var(--tm-accent-soft);
-  color: var(--tm-accent);
-}
-
-.pg-home-car-icon .tm-svg {
-  width: 26px;
-  height: 26px;
+  padding: 16px 16px 4px;
 }
 
 .pg-home-car-main {
@@ -74,7 +57,7 @@
   color: var(--tm-text);
   font-family: var(--tm-font-display);
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: -0.01em;
   line-height: 1.25;
   text-overflow: ellipsis;
@@ -97,7 +80,113 @@
   font-size: 12px;
 }
 
-/* 正在充电 / 行驶的状态行：夹在车名和四格数字之间，整行是链接。颜色只靠「充电中 / 行驶中」标签，文字用次要色 */
+/* ---------------------------------------------------------------- 电量：大号细体数字 + 电量条（点进电量页） */
+
+.pg-home-soc {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 16px 18px;
+  color: var(--tm-text-2);
+  transition: background-color 0.12s;
+}
+
+.pg-home-soc:hover,
+.pg-home-soc:active {
+  background: var(--tm-surface-2);
+}
+
+.pg-home-soc:focus-visible {
+  outline-offset: -2px;
+}
+
+.pg-home-soc-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+}
+
+.pg-home-soc-level {
+  color: var(--tm-text);
+  font-family: var(--tm-font-display);
+  font-size: 56px;
+  font-weight: 300;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.pg-home-soc-level small,
+.pg-home-soc-range-value small {
+  margin-left: 2px;
+  color: var(--tm-text-2);
+  font-size: 0.42em;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.pg-home-soc-range {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+  padding-bottom: 3px;
+}
+
+.pg-home-soc-range-value {
+  color: var(--tm-text);
+  font-family: var(--tm-font-display);
+  font-size: 26px;
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.pg-home-soc-range-value small {
+  font-size: 0.55em;
+}
+
+.pg-home-soc-note {
+  color: var(--tm-text-hint);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+/* 比公共的进度条粗，像 Tesla App 充电页那条 */
+.pg-home-soc-bar {
+  position: relative;
+  display: block;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--tm-track);
+}
+
+.pg-home-soc-bar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: var(--tm-text);
+}
+
+.pg-home-soc-bar.is-green > span {
+  background: var(--tm-green);
+}
+
+.pg-home-soc-bar.is-amber > span {
+  background: var(--tm-amber);
+}
+
+.pg-home-soc-bar.is-red > span {
+  background: var(--tm-red);
+}
+
+/* 正在充电 / 行驶的状态行：夹在电量和下面两格数字之间，整行是链接。颜色只靠「充电中 / 行驶中」标签，文字用次要色 */
 .pg-home-live {
   display: flex;
   align-items: center;
@@ -123,17 +212,12 @@ a.pg-home-fact:focus-visible {
   outline-offset: -2px;
 }
 
+/* 里程表、软件版本：两格并排 */
 .pg-home-facts {
   display: grid;
   flex: 1 1 auto;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   border-top: 1px solid var(--tm-line);
-}
-
-@media screen and (min-width: 560px) {
-  .pg-home-facts {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
 }
 
 .pg-home-fact {
@@ -145,27 +229,8 @@ a.pg-home-fact:focus-visible {
   color: var(--tm-text-2);
 }
 
-/* 格子之间的细线：两列时第 1、3 格画右边、前两格画下边；四列时前三格画右边 */
-.pg-home-fact:nth-child(odd) {
+.pg-home-fact:first-child {
   border-right: 1px solid var(--tm-line);
-}
-
-.pg-home-fact:nth-child(-n + 2) {
-  border-bottom: 1px solid var(--tm-line);
-}
-
-@media screen and (min-width: 560px) {
-  .pg-home-fact:nth-child(-n + 3) {
-    border-right: 1px solid var(--tm-line);
-  }
-
-  .pg-home-fact:nth-child(4) {
-    border-right: 0;
-  }
-
-  .pg-home-fact:nth-child(-n + 2) {
-    border-bottom: 0;
-  }
 }
 
 a.pg-home-fact {
@@ -200,15 +265,11 @@ a.pg-home-fact:active {
   color: var(--tm-text);
   font-family: var(--tm-font-display);
   font-size: 19px;
-  font-weight: 650;
+  font-weight: 400;
   letter-spacing: -0.01em;
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.pg-home-fact .tm-bar {
-  margin: 3px 0 1px;
 }
 
 .pg-home-fact-sub {
@@ -245,13 +306,13 @@ a.pg-home-fact:active {
   gap: 6px;
   color: var(--tm-text);
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .pg-home-batt-title .tm-svg {
   width: 18px;
   height: 18px;
-  color: var(--tm-green-text);
+  color: var(--tm-text-2);
 }
 
 .pg-home-chevron {
@@ -277,7 +338,7 @@ a.pg-home-fact:active {
   color: var(--tm-text);
   font-family: var(--tm-font-display);
   font-size: 24px;
-  font-weight: 650;
+  font-weight: 400;
   letter-spacing: -0.02em;
   line-height: 1.25;
   white-space: nowrap;
